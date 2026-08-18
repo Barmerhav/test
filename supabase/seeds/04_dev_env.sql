@@ -57,5 +57,25 @@ begin
       $pol$;
     exception when duplicate_object then null;
     end;
+    -- admins read exports/invoices/photos (signed URLs from the admin panel);
+    -- pickers read their own invoices
+    begin
+      execute $pol$
+        create policy admin_reads_ops_buckets on storage.objects
+          for select to authenticated
+          using (bucket_id in ('exports', 'invoices', 'leak-photos') and core.is_admin())
+      $pol$;
+    exception when duplicate_object then null;
+    end;
+    begin
+      execute $pol$
+        create policy picker_reads_own_invoice on storage.objects
+          for select to authenticated
+          using (bucket_id = 'invoices' and exists (
+            select 1 from public.invoices_selfbilled i
+             where i.pdf_path = storage.objects.name and i.picker_id = auth.uid()))
+      $pol$;
+    exception when duplicate_object then null;
+    end;
   end if;
 end $$;

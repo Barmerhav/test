@@ -191,11 +191,19 @@ begin
   end loop;
 end $$;
 
+create or replace function api.service_run_payout()
+returns uuid
+language sql volatile security definer
+set search_path = api, internal, public, pg_temp
+as $$ select internal.run_payout() $$;
+
 revoke execute on function api.service_payout_batch(uuid),
-  api.service_mark_batch_exported(uuid, text, text, jsonb)
+  api.service_mark_batch_exported(uuid, text, text, jsonb),
+  api.service_run_payout()
 from public, anon, authenticated;
 grant execute on function api.service_payout_batch(uuid),
-  api.service_mark_batch_exported(uuid, text, text, jsonb) to service_role;
+  api.service_mark_batch_exported(uuid, text, text, jsonb),
+  api.service_run_payout() to service_role;
 
 grant execute on function api.admin_run_payout() to authenticated;
 
