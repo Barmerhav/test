@@ -30,12 +30,32 @@ begin
   end if;
 end $$;
 
--- Private storage bucket for leak-decline photos (real Supabase only).
+-- Private storage buckets (real Supabase only): leak photos (auto-expiring),
+-- payout exports, self-billed invoices.
 do $$
 begin
   if to_regclass('storage.buckets') is not null then
-    insert into storage.buckets (id, name, public)
-    values ('leak-photos', 'leak-photos', false)
+    insert into storage.buckets (id, name, public) values
+      ('leak-photos', 'leak-photos', false),
+      ('exports', 'exports', false),
+      ('invoices', 'invoices', false)
     on conflict (id) do nothing;
+  end if;
+end $$;
+
+-- Storage RLS: pickers upload leak photos only into their own folder;
+-- reads happen via short-lived signed URLs (service/admin generated).
+do $$
+begin
+  if to_regclass('storage.objects') is not null then
+    begin
+      execute $pol$
+        create policy leak_photos_own_folder on storage.objects
+          for insert to authenticated
+          with check (bucket_id = 'leak-photos'
+                      and (storage.foldername(name))[1] = auth.uid()::text)
+      $pol$;
+    exception when duplicate_object then null;
+    end;
   end if;
 end $$;
