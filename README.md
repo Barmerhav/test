@@ -1,11 +1,12 @@
-# Pinui+ — trash-valet marketplace MVP
+# Lemata (למטה) — trash-valet marketplace MVP
 
 Two-sided Israeli marketplace: residents subscribe to have trash bags taken from
 their apartment door to the building's bins; **pickers** claim pickups for
 per-unit pay. Hebrew-first, full RTL, ₪.
 
-> The product name is itself a config value (`strings.app_name`) — "Pinui+" is a
-> placeholder codename.
+> The product name lives in `strings.app_name` ("למטה" / Lemata — the bag goes
+> down). Package scope keeps the original `@pinui` codename; renaming packages
+> is cosmetic churn the founder can do anytime.
 
 ## Prime directive: config-driven everything
 

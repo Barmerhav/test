@@ -55,7 +55,7 @@ export default function App() {
     <div className="layout">
       <aside className="sidebar">
         <h1>
-          Pinui<span>+</span> Admin
+          Lemata <span>למטה</span>
         </h1>
         <nav>
           <NavLink to="/board">Live board</NavLink>

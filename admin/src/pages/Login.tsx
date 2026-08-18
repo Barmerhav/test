@@ -18,7 +18,7 @@ export default function Login() {
 
   return (
     <form className="login" onSubmit={signIn}>
-      <h2>Pinui+ Admin</h2>
+      <h2>Lemata Admin</h2>
       <input
         type="text"
         placeholder="Email"
