@@ -347,6 +347,12 @@ insert into public.strings (key, locale, value) values
 ('push.payout_sent.body',      'he', '{amount} בדרך לחשבון שלך'),
 ('push.payout_sent.body',      'en', '{amount} on its way to your account'),
 
+-- ── sms ─────────────────────────────────────────────────────────────────────
+('sms.otp_body',                 'he', 'קוד הכניסה שלך לפינוי+: {otp}'),
+('sms.otp_body',                 'en', 'Your Pinui+ sign-in code: {otp}'),
+('picker.coming_soon',           'he', 'מצב מפנה בדרך — ממש בקרוב'),
+('picker.coming_soon',           'en', 'Picker mode is coming — very soon'),
+
 -- ── errors (stable RPC codes → copy) ───────────────────────────────────────
 ('error.already_claimed',        'he', 'הבקשה כבר נתפסה'),
 ('error.already_claimed',        'en', 'This request was already claimed'),
@@ -380,6 +386,8 @@ insert into public.strings (key, locale, value) values
 ('error.underage',               'en', 'You must be 18 or older'),
 ('error.invalid_units',          'he', 'כמות יחידות לא תקינה'),
 ('error.invalid_units',          'en', 'Invalid number of units'),
+('error.ttl_passed',             'he', 'מועד היעד הזה כבר עבר להיום — בחרו מועד אחר'),
+('error.ttl_passed',             'en', 'That deadline already passed today — pick another'),
 ('error.subscription_not_active','he', 'אין מנוי פעיל'),
 ('error.subscription_not_active','en', 'No active subscription'),
 ('error.feature_disabled',       'he', 'האפשרות הזו לא זמינה כרגע'),

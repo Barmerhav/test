@@ -52,6 +52,7 @@ export const TRANSITIONS: Transition[] = [
 
   { from: "put_out_prompt", to: "claimed", roles: ["resident"], note: "bag confirmed outside; claim timer starts NOW" },
   { from: "put_out_prompt", to: "canceled", roles: ["resident", "admin"], note: "resident bails; units refunded" },
+  { from: "put_out_prompt", to: "open", roles: ["system"], note: "claim window lapsed while waiting for the resident — release without strike" },
 
   { from: "collected", to: "verified", roles: ["picker"], note: "bin QR scanned at the building bins" },
   { from: "verified", to: "paid", roles: ["system"], note: "payout line written (same tx as verify)" },

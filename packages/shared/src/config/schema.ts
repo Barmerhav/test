@@ -126,12 +126,12 @@ export const configEntries = {
       picker_strike: nonNegInt,
     }),
     { repost: true, payout_boost_pct: 0, resident_credit_units: 1, picker_strike: 1 },
-    "What happens when a claim lapses (picker no-show): repost the request to the open pool (optionally boosting payout by payout_boost_pct %), grant the resident bag credits, add strikes to the picker.",
+    "What happens when a claim lapses (picker no-show): repost the request to the open pool (optionally boosting payout by payout_boost_pct %), grant the resident resident_credit_units bag credits PER AFFECTED UNIT (1 = made whole), add strikes to the picker.",
   ),
   expiry_action: entry(
     z.object({ resident_credit_units: nonNegInt }),
     { resident_credit_units: 1 },
-    "What happens when an open request passes its TTL with no claim: resident automatically receives this many bag credits (zero-touch).",
+    "What happens when an open request passes its TTL unclaimed: the resident automatically receives resident_credit_units bag credits PER REQUESTED UNIT (1 = made whole), zero-touch.",
   ),
   strikes_to_suspend: entry(
     positiveInt,
@@ -147,6 +147,11 @@ export const configEntries = {
     positiveInt,
     1,
     "How many claim groups (buildings) a picker may hold simultaneously.",
+  ),
+  poa_version: entry(
+    z.string().min(1),
+    "poa-selfbill-2026-08",
+    "Version tag of the self-billing power-of-attorney consent text pickers sign at onboarding. Bump when the legal text changes; stored on each picker's consent record.",
   ),
 
   // ── optional features (kill-switched) ──────────────────────────────

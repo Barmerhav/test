@@ -20,6 +20,7 @@ export const RPC_ERROR_CODES = [
   "photo_required",
   "underage",
   "invalid_units",
+  "ttl_passed",
   "subscription_not_active",
   "feature_disabled",
   "config_validation_failed",

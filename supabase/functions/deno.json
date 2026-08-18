@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2",
+    "@pinui/providers/payment": "../../packages/providers/src/payment.ts",
+    "@pinui/providers/sms": "../../packages/providers/src/sms.ts",
+    "@pinui/providers/push": "../../packages/providers/src/push.ts"
+  }
+}

@@ -17,6 +17,19 @@ begin
   end if;
 end $$;
 
+do $$
+begin
+  if to_regclass('vault.secrets') is not null then
+    if not exists (select 1 from vault.secrets where name = 'id_hash_salt') then
+      perform vault.create_secret('local-dev-id-salt-not-for-prod', 'id_hash_salt');
+    end if;
+  else
+    insert into core.dev_secrets (name, value)
+    values ('id_hash_salt', 'local-dev-id-salt-not-for-prod')
+    on conflict (name) do nothing;
+  end if;
+end $$;
+
 -- Private storage bucket for leak-decline photos (real Supabase only).
 do $$
 begin
