@@ -118,6 +118,11 @@ export const configEntries = {
     10,
     "Maximum minutes a revealed building entry code stays displayed (never beyond the claim deadline). Every reveal is audited.",
   ),
+  scan_grace_minutes: entry(
+    positiveInt,
+    60,
+    "Grace period after the claim deadline for a picker who already marked the bags COLLECTED but hasn't scanned the bin QR. When it lapses too, the pickup auto-completes (paid, flagged auto_completed for the admin board) — the bags are physically gone, so reposting would be wrong.",
+  ),
   noshow_action: entry(
     z.object({
       repost: z.boolean(),
@@ -161,9 +166,9 @@ export const configEntries = {
     "Boost: resident pays user_fee (₪) to bump the picker payout by payout_bump (₪) on one request. OFF until the founder enables.",
   ),
   backstop: entry(
-    z.object({ enabled: z.boolean(), user_price: shekels }),
-    { enabled: false, user_price: 15 },
-    "Backstop: paid rescue option offered on expired requests (manual-dispatch lever). OFF until the founder enables.",
+    z.object({ enabled: z.boolean(), user_price: shekels, ttl_hours: positiveInt }),
+    { enabled: false, user_price: 15, ttl_hours: 24 },
+    "Backstop: paid rescue option offered on expired requests (manual-dispatch lever). The relisted request stays open ttl_hours. OFF until the founder enables.",
   ),
   on_demand_single: entry(
     z.object({ enabled: z.boolean(), price: shekels }),

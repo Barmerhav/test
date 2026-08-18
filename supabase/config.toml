@@ -382,6 +382,14 @@ authorization_url_path = "/oauth/consent"
 # Allow dynamic client registration
 allow_dynamic_registration = false
 
+# Webhook-style functions are called without a user JWT: the PSP signs its
+# own requests (verified in-function) and GoTrue signs the SMS hook.
+[functions.payments-webhook]
+verify_jwt = false
+
+[functions.sms-hook]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

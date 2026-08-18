@@ -30,21 +30,27 @@ Deno.serve(
     if (providerName !== "mock") return json({ error: "real PSP billing not wired yet" }, 501);
     const outcome = ((cfg.mock_payment ?? {}) as { outcome?: string }).outcome === "fail" ? "charge.failed" : "charge.settled";
 
-    // 1) pending renewal charges without a provider id yet
+    // 1) pending charges: fresh renewals (no provider id yet) AND stuck ones
+    //    whose settlement webhook never landed (provider id set, >3 min old)
+    const staleCutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
     const { data: charges } = await svc
       .from("charges")
-      .select("id, idempotency_key")
+      .select("id, idempotency_key, provider_charge_id, created_at")
       .eq("status", "pending")
-      .is("provider_charge_id", null)
       .limit(50);
 
     let chargesProcessed = 0;
-    for (const ch of (charges ?? []) as { id: string; idempotency_key: string }[]) {
-      const pcid = `mock_ch_${ch.idempotency_key}`;
-      await svc.schema("api").rpc("service_mark_charge_provider", {
-        p_charge_id: ch.id,
-        p_provider_charge_id: pcid,
-      });
+    for (const ch of (charges ?? []) as {
+      id: string; idempotency_key: string; provider_charge_id: string | null; created_at: string;
+    }[]) {
+      if (ch.provider_charge_id && ch.created_at > staleCutoff) continue; // webhook still in flight
+      const pcid = ch.provider_charge_id ?? `mock_ch_${ch.idempotency_key}`;
+      if (!ch.provider_charge_id) {
+        await svc.schema("api").rpc("service_mark_charge_provider", {
+          p_charge_id: ch.id,
+          p_provider_charge_id: pcid,
+        });
+      }
       await emitMockWebhook({ type: outcome, providerChargeId: pcid, raw: { mock: true, source: "billing-worker" } });
       chargesProcessed++;
     }

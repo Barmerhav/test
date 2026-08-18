@@ -47,12 +47,12 @@ function buildCsv(p: BatchPayload): string {
 }
 
 /** Best-effort MASAV fixed-width record set (header, K-records, trailer). */
-function buildMasav(p: BatchPayload, periodEnd: string): string {
+function buildMasav(p: BatchPayload, periodEnd: string, headerName: string): string {
   const pad = (s: string, len: number) => s.slice(0, len).padStart(len, "0");
   const padTxt = (s: string, len: number) => s.slice(0, len).padEnd(len, " ");
   const ymd = periodEnd.replace(/-/g, "").slice(2); // YYMMDD
   const lines: string[] = [];
-  lines.push(`K${ymd}${pad("", 8)}${padTxt("PINUI PAYOUTS", 20)}`);
+  lines.push(`K${ymd}${pad("", 8)}${padTxt(headerName, 20)}`);
   let totalAgorot = 0;
   for (const row of p.payouts) {
     const bank = pad(row.picker.bank_details?.bank ?? "0", 2);
@@ -66,14 +66,33 @@ function buildMasav(p: BatchPayload, periodEnd: string): string {
   return lines.join("\n");
 }
 
+/** All invoice copy comes from the strings table (admin-editable). */
+async function invoiceStrings(): Promise<Record<string, string>> {
+  const keys = [
+    "invoice.title", "invoice.issued_note", "invoice.supplier", "invoice.vat_dealer",
+    "invoice.col_item", "invoice.col_amount", "invoice.line_pickups",
+    "invoice.vat_label", "invoice.total_due", "invoice.print_hint",
+  ];
+  const out: Record<string, string> = {};
+  for (const k of keys) out[k] = await readString(k);
+  return out;
+}
+
+const fill = (tpl: string, params: Record<string, string | number>) =>
+  tpl.replace(/\{(\w+)\}/g, (_, k: string) => String(params[k] ?? ""));
+
 async function buildInvoiceHtml(row: BatchPayload["payouts"][number], appName: string): Promise<string> {
   const inv = row.invoice;
   const p = row.payout;
+  const s = await invoiceStrings();
   const money = (agorot: number) => formatILS(agorot, { isolate: false, withAgorot: true });
   const vatLine = inv.tax_status_snapshot === "murshe"
-    ? `<tr><td>מע"מ (${(Number(p.vat_rate) * 100).toFixed(0)}%)</td><td class="num">${money(p.vat_agorot)}</td></tr>`
+    ? `<tr><td>${fill(s["invoice.vat_label"]!, { pct: (Number(p.vat_rate) * 100).toFixed(0) })}</td><td class="num">${money(p.vat_agorot)}</td></tr>`
     : "";
   const taxLabel = await readString(`picker.tax_${inv.tax_status_snapshot}`).catch(() => inv.tax_status_snapshot);
+  const dealer = row.picker.vat_id
+    ? " · " + fill(s["invoice.vat_dealer"]!, { vat_id: row.picker.vat_id })
+    : "";
   return `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <title>${inv.invoice_number}</title>
 <style>
@@ -85,16 +104,16 @@ async function buildInvoiceHtml(row: BatchPayload["payouts"][number], appName: s
  .total td{font-weight:700;background:#faf7ee}
  @media print {.noprint{display:none}}
 </style></head><body>
-<h1>חשבונית עצמית (Self-Billed) · ${inv.invoice_number}</h1>
-<p class="muted">${appName} · הופקה מכוח ייפוי כוח לחיוב עצמי · תאריך: ${p.period_end}</p>
-<p>ספק: ${row.picker.full_name ?? row.picker.phone} · ${taxLabel}${row.picker.vat_id ? " · עוסק " + row.picker.vat_id : ""}</p>
+<h1>${s["invoice.title"]} · ${inv.invoice_number}</h1>
+<p class="muted">${appName} · ${s["invoice.issued_note"]} · ${p.period_end}</p>
+<p>${s["invoice.supplier"]}: ${row.picker.full_name ?? row.picker.phone} · ${taxLabel}${dealer}</p>
 <table>
-<tr><th>פירוט</th><th>סכום</th></tr>
-<tr><td>איסוף ופינוי — ${p.total_units} יחידות</td><td class="num">${money(p.amount_exvat_agorot)}</td></tr>
+<tr><th>${s["invoice.col_item"]}</th><th>${s["invoice.col_amount"]}</th></tr>
+<tr><td>${fill(s["invoice.line_pickups"]!, { units: p.total_units })}</td><td class="num">${money(p.amount_exvat_agorot)}</td></tr>
 ${vatLine}
-<tr class="total"><td>סה"כ לתשלום</td><td class="num">${money(p.total_agorot)}</td></tr>
+<tr class="total"><td>${s["invoice.total_due"]}</td><td class="num">${money(p.total_agorot)}</td></tr>
 </table>
-<p class="muted noprint">להפקת PDF: הדפסה → שמירה כ-PDF</p>
+<p class="muted noprint">${s["invoice.print_hint"]}</p>
 </body></html>`;
 }
 
@@ -128,8 +147,9 @@ Deno.serve(
       return path;
     };
 
+    const masavHeader = await readString("invoice.masav_header", "en");
     const csvPath = await upload(`${stamp}/payouts-${batchId}.csv`, buildCsv(payload), "text/csv; charset=utf-8");
-    const masavPath = await upload(`${stamp}/masav-${batchId}.txt`, buildMasav(payload, stamp), "text/plain");
+    const masavPath = await upload(`${stamp}/masav-${batchId}.txt`, buildMasav(payload, stamp, masavHeader), "text/plain");
 
     const invoicePaths: Record<string, string> = {};
     for (const row of payload.payouts) {

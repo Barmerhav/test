@@ -38,10 +38,26 @@ Deno.serve(
     const otp = payload.sms?.otp ?? "";
     if (!phone || !otp) return json({ error: "bad payload" }, 400);
 
-    // basic anti-pumping: Israeli numbers only (config-tunable gateway later)
+    // anti-pumping gate 1: Israeli numbers only (config-tunable gateway later)
     if (!/^9725\d{8}$/.test(phone.replace(/^\+/, ""))) {
       console.warn("sms-hook: refused non-IL phone");
       return json({ error: "unsupported region" }, 400);
+    }
+
+    // anti-pumping gate 2: per-phone hourly cap from the rate_limits config key
+    const svcEarly = serviceClient();
+    const { data: cfgRows } = await svcEarly.from("config").select("value").eq("key", "rate_limits").maybeSingle();
+    const maxPerHour = Number(
+      (cfgRows?.value as { otp_per_phone_per_hour?: number } | null)?.otp_per_phone_per_hour ?? 5,
+    );
+    const { data: allowed } = await svcEarly.schema("api").rpc("service_rate_limit_ok", {
+      p_bucket: `otp:${phone}`,
+      p_max: maxPerHour,
+      p_window_seconds: 3600,
+    });
+    if (allowed === false) {
+      console.warn("sms-hook: rate-limited phone");
+      return json({ error: "rate limited" }, 429);
     }
 
     const template = await readString("sms.otp_body");

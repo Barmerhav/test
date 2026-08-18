@@ -53,8 +53,18 @@ export default function Buildings() {
     setStatus(error ? `✗ ${error.message}` : "✓ code updated (encrypted at rest)");
   }
 
-  /** Print one building's bin QR: renders into a print window. */
+  /** Print one building's bin QR. Poster copy comes from the strings table
+   *  (picker-facing Hebrew → admin-editable, prime directive). */
   async function printQr(b: Building) {
+    const { data: strs } = await supabase
+      .from("strings")
+      .select("key, value")
+      .eq("locale", "he")
+      .in("key", ["app_name", "qr_poster.scan_hint"]);
+    const lookup = new Map((strs ?? []).map((s: { key: string; value: string }) => [s.key, s.value]));
+    const appName = lookup.get("app_name") ?? "";
+    const scanHint = lookup.get("qr_poster.scan_hint") ?? "";
+
     const dataUrl = await QRCode.toDataURL(b.bin_qr_id, { width: 480, margin: 2 });
     const w = window.open("", "_blank", "width=600,height=760");
     if (!w) return;
@@ -62,7 +72,7 @@ export default function Buildings() {
 <style>body{font-family:Arial;display:flex;flex-direction:column;align-items:center;margin-top:40px}
 h1{font-size:26px;margin:0} p{color:#444} img{margin:24px 0}</style></head><body>
 <h1>${b.street} ${b.house_number}, ${b.city}</h1>
-<p>סרקו כאן בסיום הפינוי · פינוי+</p>
+<p>${scanHint} · ${appName}</p>
 <img src="${dataUrl}" alt="QR">
 <p style="font-family:monospace">${b.bin_qr_id}</p>
 <script>window.onload=()=>window.print()</script></body></html>`);
