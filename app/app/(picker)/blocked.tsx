@@ -5,20 +5,23 @@ import { View } from "react-native";
 import { routeForState } from "@/lib/routing";
 import { rpc } from "@/lib/supabase";
 import type { MyStateUser } from "@/lib/types";
-import { useAppState, useStr } from "@/state/AppState";
-import { Button } from "@/ui/Button";
-import { Screen } from "@/ui/Screen";
-import { colors, spacing } from "@/ui/theme";
+import { useAppState, useConfig, useStr } from "@/state/AppState";
+import { PButton, PScreen } from "@/ui/PickerUI";
+import { pickerColors as pc, spacing } from "@/ui/theme";
 import { AppText } from "@/ui/Text";
 import { useRpcErrorToast } from "@/ui/Toast";
 
-/** Picker mode arrives in the next build — slice 3 owns everything here. */
-export default function PickerPlaceholder() {
+/** Suspended (strikes) or rejected pickers land here. */
+export default function PickerBlocked() {
   const str = useStr();
   const router = useRouter();
   const rpcErrorToast = useRpcErrorToast();
-  const { refresh, patchUser } = useAppState();
+  const { myState, refresh, patchUser } = useAppState();
+  const maxStrikes = useConfig("strikes_to_suspend");
   const [busy, setBusy] = useState(false);
+
+  const picker = myState?.picker ?? null;
+  const suspended = picker?.status === "suspended";
 
   const backToResident = async () => {
     setBusy(true);
@@ -37,20 +40,24 @@ export default function PickerPlaceholder() {
   };
 
   return (
-    <Screen scroll={false} contentStyle={{ justifyContent: "center" }}>
+    <PScreen scroll={false} contentStyle={{ justifyContent: "center" }}>
       <View style={{ alignItems: "center", gap: spacing.lg }}>
-        <Ionicons name="walk-outline" size={64} color={colors.muted} />
-        <AppText weight="medium" size={17} color={colors.muted} center>
-          {str("picker.coming_soon")}
+        <Ionicons name="hand-left-outline" size={64} color={pc.danger} />
+        <AppText weight="medium" size={17} color={pc.text} center>
+          {suspended ? str("error.picker_suspended") : str("picker.rejected")}
         </AppText>
-        <Button
+        {suspended && picker ? (
+          <AppText size={15} color={pc.muted} center>
+            {str("earnings.strikes", { count: picker.strikes, max: maxStrikes })}
+          </AppText>
+        ) : null}
+        <PButton
           label={str("settings.switch_mode_resident")}
+          kind="ghost"
           onPress={() => void backToResident()}
           loading={busy}
-          kind="ghost"
-          compact
         />
       </View>
-    </Screen>
+    </PScreen>
   );
 }

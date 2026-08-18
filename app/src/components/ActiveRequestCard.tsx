@@ -3,13 +3,14 @@ import React, { useEffect, useState } from "react";
 import { Pressable, Share, View } from "react-native";
 import { formatILS, shekelsToAgorot } from "@pinui/shared";
 import { formatCountdown } from "@/lib/dates";
-import { rpc } from "@/lib/supabase";
+import { rpc, supabase } from "@/lib/supabase";
 import type { RequestRow } from "@/lib/types";
 import { useAppState, useConfig, useStr } from "@/state/AppState";
-import { Button } from "@/ui/Button";
+import { Button, ConfirmButton } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { colors, spacing, TAP } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
+import { useRpcErrorToast } from "@/ui/Toast";
 
 function Countdown({ expiresAt }: { expiresAt: string }) {
   const [now, setNow] = useState(() => Date.now());
@@ -46,13 +47,42 @@ function DismissX({ onPress }: { onPress: () => void }) {
   );
 }
 
+/** Estimated minutes until the picker's collect-by deadline — the resident can
+ * read the active claim row on their own request (RLS claims_parties). */
+function useEtaMinutes(requestId: string, enabled: boolean): number | null {
+  const [deadline, setDeadline] = useState<string | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    const load = async () => {
+      const { data, error } = await supabase
+        .from("claims")
+        .select("deadline_at")
+        .eq("request_id", requestId)
+        .eq("status", "active")
+        .limit(1);
+      const row = (data as { deadline_at: string }[] | null)?.[0];
+      if (alive && !error && row) setDeadline(row.deadline_at);
+    };
+    void load();
+    return () => {
+      alive = false;
+    };
+  }, [requestId, enabled]);
+  if (!deadline) return null;
+  const mins = Math.round((new Date(deadline).getTime() - Date.now()) / 60000);
+  return Math.max(1, mins);
+}
+
 /** Live status card under the big button, driven by request.status + Realtime. */
 export function ActiveRequestCard({ request }: { request: RequestRow }) {
   const str = useStr();
+  const rpcErrorToast = useRpcErrorToast();
   const { refresh, dismissRequest, setActiveRequest, myState } = useAppState();
   const backstop = useConfig("backstop");
   const referral = useConfig("referral");
   const [busy, setBusy] = useState(false);
+  const etaMinutes = useEtaMinutes(request.id, request.status === "resident_approval");
 
   const cancel = async () => {
     setBusy(true);
@@ -62,6 +92,21 @@ export function ActiveRequestCard({ request }: { request: RequestRow }) {
       await refresh();
     } catch {
       // if cancel raced a claim, the realtime update repaints the card
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** confirm-first: approve_pickup / decline_eta / confirm_bag_out */
+  const runTransition = async (fn: "approve_pickup" | "decline_eta" | "confirm_bag_out") => {
+    setBusy(true);
+    try {
+      const row = await rpc<RequestRow>(fn, { p_request_id: request.id });
+      setActiveRequest(row);
+      await refresh();
+    } catch (err) {
+      rpcErrorToast(err);
       await refresh();
     } finally {
       setBusy(false);
@@ -112,19 +157,29 @@ export function ActiveRequestCard({ request }: { request: RequestRow }) {
       );
 
     case "resident_approval":
-      // TODO(slice-3): api.approve_pickup / api.decline_eta RPCs do not exist
-      // yet — render the state read-only until they land.
       return (
-        <Card style={{ alignItems: "center", gap: spacing.xs }}>
+        <Card style={{ alignItems: "center", gap: spacing.md }}>
           <AppText weight="medium" size={16} center>
-            {str("request.claimed")}
+            {str("request.approve_eta", { minutes: etaMinutes ?? "—" })}
           </AppText>
+          <Button
+            label={str("request.approve_cta")}
+            kind="success"
+            onPress={() => void runTransition("approve_pickup")}
+            loading={busy}
+            style={{ alignSelf: "stretch" }}
+          />
+          <ConfirmButton
+            label={str("request.decline_cta")}
+            kind="danger"
+            onPress={() => void runTransition("decline_eta")}
+            disabled={busy}
+            style={{ alignSelf: "stretch" }}
+          />
         </Card>
       );
 
     case "put_out_prompt":
-      // TODO(slice-3): api.confirm_bag_out RPC does not exist yet — the CTA is
-      // rendered disabled until the backend ships it.
       return (
         <Card style={{ alignItems: "center", gap: spacing.md }}>
           <AppText weight="medium" size={16} center>
@@ -132,8 +187,8 @@ export function ActiveRequestCard({ request }: { request: RequestRow }) {
           </AppText>
           <Button
             label={str("request.bag_out_cta")}
-            onPress={() => undefined}
-            disabled
+            onPress={() => void runTransition("confirm_bag_out")}
+            loading={busy}
             style={{ alignSelf: "stretch" }}
           />
         </Card>

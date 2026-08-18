@@ -29,6 +29,24 @@ export const radii = {
 /** Minimum resident-mode tap target. */
 export const TAP = 48;
 
+/** Picker-mode DARK theme (gig side). Visual constants only. */
+export const pickerColors = {
+  bg: "#121417",
+  surface: "#1B1E24",
+  /** light "paper" cards used sparingly for emphasis */
+  paper: "#F2F0EA",
+  text: "#F5F3EC",
+  muted: "#9AA0A8",
+  amber: "#FFB020",
+  success: "#27C094",
+  danger: "#FF6B57",
+  line: "#2A2E36",
+  ink: "#161616",
+} as const;
+
+/** Minimum picker-mode tap target (gloved hands, on the move). */
+export const PICKER_TAP = 56;
+
 export const shadow = {
   shadowColor: "#161616",
   shadowOpacity: 0.06,

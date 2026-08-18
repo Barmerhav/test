@@ -78,10 +78,7 @@ export default function HomeScreen() {
         />
       ) : null}
 
-      {/* (3) building strip.
-          TODO(later slice): the building_meter view isn't queryable yet, so
-          until doors-count arrives we show the address instead of
-          str('home.building_strip', { doors }). */}
+      {/* (3) building strip — live doors count from get_my_state */}
       {residency ? (
         <Card
           style={{
@@ -92,13 +89,15 @@ export default function HomeScreen() {
           }}
         >
           <Ionicons name="home-outline" size={20} color={colors.muted} />
-          <AppText weight="medium" size={15} style={{ flexShrink: 1 }}>
+          <AppText weight="medium" size={15} style={{ flex: 1 }}>
+            {str("home.building_strip", { doors: residency.meter_doors })}
+          </AppText>
+          <AppText size={13} color={colors.muted} numberOfLines={1} style={{ flexShrink: 1 }}>
             {residency.street}
           </AppText>
-          <MonoText size={15}>{residency.house_number}</MonoText>
-          <AppText size={15} color={colors.muted} style={{ flexShrink: 1 }}>
-            {residency.city}
-          </AppText>
+          <MonoText size={13} color={colors.muted}>
+            {residency.house_number}
+          </MonoText>
         </Card>
       ) : null}
     </Screen>

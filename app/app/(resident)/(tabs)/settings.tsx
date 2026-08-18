@@ -99,7 +99,7 @@ export default function SettingsScreen() {
         p_default_mode: "picker",
       });
       patchUser(updated);
-      await refresh(); // root layout redirects to the picker placeholder
+      await refresh(); // root layout redirects into the picker flow
     } catch (err) {
       rpcErrorToast(err);
     } finally {

@@ -17,6 +17,22 @@ export function formatTime(iso: string | null | undefined): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** Local-time period starts for the earnings tabs. */
+export function startOfToday(now: Date = new Date()): Date {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+/** Week starts Sunday (Israeli week). */
+export function startOfWeek(now: Date = new Date()): Date {
+  const d = startOfToday(now);
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+export function startOfMonth(now: Date = new Date()): Date {
+  return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
 /** mm:ss under an hour, HH:mm above. Clamped at zero. */
 export function formatCountdown(msRemaining: number): string {
   const total = Math.max(0, Math.floor(msRemaining / 1000));

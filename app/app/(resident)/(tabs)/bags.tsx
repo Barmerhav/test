@@ -5,7 +5,7 @@ import { View } from "react-native";
 import { formatDate } from "@/lib/dates";
 import { supabase } from "@/lib/supabase";
 import type { BagRollRow } from "@/lib/types";
-import { useStr } from "@/state/AppState";
+import { useAppState, useConfig, useStr } from "@/state/AppState";
 import { Card } from "@/ui/Card";
 import { Screen } from "@/ui/Screen";
 import { colors, spacing } from "@/ui/theme";
@@ -13,7 +13,14 @@ import { AppText, MonoText } from "@/ui/Text";
 
 export default function BagsScreen() {
   const str = useStr();
+  const { myState } = useAppState();
+  const meterConfig = useConfig("building_meter");
   const [rolls, setRolls] = useState<BagRollRow[]>([]);
+
+  const doors = myState?.residency?.meter_doors ?? 0;
+  const tiers = [...meterConfig.tiers].sort((a, b) => a.doors - b.doors);
+  const nextTier = tiers.find((t) => t.doors > doors) ?? null;
+  const reachedTier = [...tiers].reverse().find((t) => t.doors <= doors) ?? null;
 
   useFocusEffect(
     useCallback(() => {
@@ -84,17 +91,49 @@ export default function BagsScreen() {
           })}
         </View>
 
-        {/* Building meter — placeholder until the meter view lands.
-            TODO(later slice): read the building_meter view for live doors
-            count + tiers; '—' stands in for the unknown count meanwhile. */}
-        <Card style={{ gap: spacing.sm }}>
-          <AppText weight="bold" size={17}>
-            {str("meter.title")}
-          </AppText>
-          <AppText size={14} color={colors.muted}>
-            {str("meter.progress", { doors: "—" })}
-          </AppText>
-        </Card>
+        {/* Building meter — live doors count + next tier from config */}
+        {meterConfig.enabled ? (
+          <Card style={{ gap: spacing.sm }}>
+            <AppText weight="bold" size={17}>
+              {str("meter.title")}
+            </AppText>
+            <AppText size={14}>{str("meter.progress", { doors })}</AppText>
+            {nextTier ? (
+              <>
+                <View
+                  style={{
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: colors.line,
+                    overflow: "hidden",
+                  }}
+                >
+                  <View
+                    style={{
+                      height: 10,
+                      borderRadius: 5,
+                      width: `${Math.min(100, Math.round((doors / nextTier.doors) * 100))}%`,
+                      backgroundColor: colors.success,
+                    }}
+                  />
+                </View>
+                <AppText size={13} color={colors.muted}>
+                  {str("meter.next_tier", {
+                    missing: nextTier.doors - doors,
+                    bonus: nextTier.bonus_units_all,
+                  })}
+                </AppText>
+              </>
+            ) : reachedTier ? (
+              <AppText size={13} color={colors.success}>
+                {str("meter.tier_reached", {
+                  doors: reachedTier.doors,
+                  bonus: reachedTier.bonus_units_all,
+                })}
+              </AppText>
+            ) : null}
+          </Card>
+        ) : null}
       </View>
     </Screen>
   );

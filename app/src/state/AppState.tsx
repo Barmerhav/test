@@ -5,7 +5,9 @@
  * PRIME DIRECTIVE: no hardcoded business values/strings — everything renders
  * through useConfig()/useStr() backed by the `config` and `strings` tables.
  */
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Session } from "@supabase/supabase-js";
+import * as Notifications from "expo-notifications";
 import React, {
   createContext,
   useCallback,
@@ -15,6 +17,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { Platform } from "react-native";
 import {
   configEntries,
   getConfig,
@@ -25,6 +28,7 @@ import {
 import { rpc, supabase } from "@/lib/supabase";
 import type {
   Locale,
+  MyPicker,
   MyState,
   MyStateUser,
   PlanRow,
@@ -34,6 +38,14 @@ import type {
 /** Terminal statuses the resident should still SEE on the home card until
  * dismissed (celebration / credit banner / leak notice). */
 const STICKY_TERMINAL = ["paid", "expired", "declined_leak"] as const;
+
+/** AsyncStorage key remembering the last dismissed terminal request, so the
+ * celebration/banner card doesn't resurrect from last_request on relaunch. */
+const DISMISSED_KEY = "pinui.dismissed_request_id";
+
+function isStickyTerminal(status: string): boolean {
+  return (STICKY_TERMINAL as readonly string[]).includes(status);
+}
 
 type StrParams = Record<string, string | number>;
 export type StrFn = (key: string, params?: StrParams) => string;
@@ -54,6 +66,7 @@ interface AppStateValue {
   setActiveRequest: (row: RequestRow | null) => void;
   dismissRequest: () => void;
   patchUser: (user: MyStateUser) => void;
+  patchPicker: (patch: Partial<MyPicker>) => void;
   signOut: () => Promise<void>;
 }
 
@@ -76,6 +89,16 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const sessionRef = useRef<Session | null>(null);
   sessionRef.current = session;
+
+  // Last dismissed terminal request id (hydrated from storage once).
+  const dismissedIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    void AsyncStorage.getItem(DISMISSED_KEY)
+      .then((v) => {
+        dismissedIdRef.current = v;
+      })
+      .catch(() => undefined);
+  }, []);
 
   // ── auth session ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -195,8 +218,17 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setMyState(st);
       setActiveRequestState((prev) => {
         if (st.active_request) return st.active_request;
-        // Keep celebratory/terminal rows on screen until the user dismisses.
-        if (prev && (STICKY_TERMINAL as readonly string[]).includes(prev.status)) {
+        // No in-flight request: surface the latest terminal row (paid
+        // celebration / expired credit / leak notice) until dismissed.
+        const last = st.last_request;
+        if (
+          last &&
+          isStickyTerminal(last.status) &&
+          last.id !== dismissedIdRef.current
+        ) {
+          return last;
+        }
+        if (prev && isStickyTerminal(prev.status) && prev.id !== dismissedIdRef.current) {
           return prev;
         }
         return null;
@@ -211,9 +243,28 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const uid = session?.user.id ?? null;
 
-  // TODO(later slice): push notifications — obtain an Expo push token
-  // (expo-notifications) and call api.register_device(p_expo_push_token,
-  // p_platform) here once the dependency lands with picker mode.
+  // ── push token registration (best-effort; silent on simulator/denied) ─
+  const pushRegisteredRef = useRef(false);
+  useEffect(() => {
+    if (!uid || pushRegisteredRef.current) return;
+    const register = async () => {
+      try {
+        const perms = await Notifications.requestPermissionsAsync();
+        if (!perms.granted) return;
+        const token = await Notifications.getExpoPushTokenAsync();
+        const platform =
+          Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : null;
+        await rpc("register_device", {
+          p_expo_push_token: token.data,
+          p_platform: platform,
+        });
+        pushRegisteredRef.current = true;
+      } catch {
+        // no push on this device/session — fine
+      }
+    };
+    void register();
+  }, [uid]);
 
   useEffect(() => {
     setMyStateLoaded(false);
@@ -293,11 +344,23 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const dismissRequest = useCallback(() => {
-    setActiveRequestState(null);
+    setActiveRequestState((prev) => {
+      if (prev) {
+        dismissedIdRef.current = prev.id;
+        void AsyncStorage.setItem(DISMISSED_KEY, prev.id).catch(() => undefined);
+      }
+      return null;
+    });
   }, []);
 
   const patchUser = useCallback((user: MyStateUser) => {
     setMyState((prev) => (prev ? { ...prev, user } : prev));
+  }, []);
+
+  const patchPicker = useCallback((patch: Partial<MyPicker>) => {
+    setMyState((prev) =>
+      prev && prev.picker ? { ...prev, picker: { ...prev.picker, ...patch } } : prev,
+    );
   }, []);
 
   const signOut = useCallback(async () => {
@@ -325,6 +388,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setActiveRequest,
       dismissRequest,
       patchUser,
+      patchPicker,
       signOut,
     }),
     [
@@ -343,6 +407,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setActiveRequest,
       dismissRequest,
       patchUser,
+      patchPicker,
       signOut,
     ],
   );

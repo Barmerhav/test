@@ -41,6 +41,8 @@ export interface MySubscription {
   next_reset_at: string | null;
   bag_format: BagFormat;
   plan: MyStatePlan;
+  /** a newer active_for_signup version of the same plan code exists */
+  newer_plan_version: boolean;
 }
 
 export interface RequestRow {
@@ -66,6 +68,23 @@ export interface MyResidency {
   house_number: string;
   building_paused: boolean;
   has_entry_code: boolean;
+  /** active subscriptions in the building (building meter) */
+  meter_doors: number;
+}
+
+export type PickerStatus =
+  | "pending_verification"
+  | "active"
+  | "suspended"
+  | "rejected";
+
+export type TaxStatus = "patur" | "murshe" | "none";
+
+export interface MyPicker {
+  status: PickerStatus;
+  tax_status: TaxStatus;
+  strikes: number;
+  available: boolean;
 }
 
 export interface MyState {
@@ -73,7 +92,10 @@ export interface MyState {
   subscription: MySubscription | null;
   credits_available: number;
   active_request: RequestRow | null;
+  /** latest request row including terminal statuses */
+  last_request: RequestRow | null;
   residency: MyResidency | null;
+  picker: MyPicker | null;
 }
 
 export interface PlanRow {
@@ -103,4 +125,109 @@ export interface HistoryRequestRow {
   units_requested: number;
   units_final: number | null;
   created_at: string;
+}
+
+// ── picker domain ─────────────────────────────────────────────────────────
+
+export interface FeedRow {
+  request_id: string;
+  building_id: string;
+  city: string;
+  street: string;
+  house_number: string;
+  lat: number | null;
+  lng: number | null;
+  units: number;
+  payout_agorot: number;
+  expires_at: string;
+  created_at: string;
+  building_open_count: number;
+  distance_m: number | null;
+}
+
+export type ClaimStatus =
+  | "active"
+  | "completed"
+  | "lapsed"
+  | "released"
+  | "declined_leak";
+
+export interface ClaimRow {
+  id: string;
+  request_id: string;
+  claim_group_id: string;
+  picker_id: string;
+  status: ClaimStatus;
+  claimed_at: string;
+  deadline_at: string;
+  payout_per_unit_agorot: number;
+  payout_boost_agorot: number;
+  collected_at: string | null;
+  units_collected: number | null;
+}
+
+export interface ClaimResult {
+  claim_group_id: string;
+  claims: { claim_id: string; request_id: string }[];
+  deadline_at: string;
+}
+
+export interface StopRequestRow {
+  id: string;
+  units_requested: number;
+  notes: string | null;
+  residency_id: string;
+  building_id: string;
+  status: RequestStatus;
+}
+
+export interface StopResidencyRow {
+  id: string;
+  floor: number | null;
+  apartment: string | null;
+  door_note: string | null;
+}
+
+export interface StopBuildingRow {
+  id: string;
+  street: string;
+  house_number: string;
+  city: string;
+  lat: number | null;
+  lng: number | null;
+  bin_location_note: string | null;
+}
+
+export interface RevealResult {
+  code: string | null;
+  reveal_expires_at: string | null;
+}
+
+/** Raw picker chips passed to api.mark_collected (server recounts). */
+export interface CollectAdjustment {
+  large_bags: number;
+  small_bags: number;
+  oversized_bags: number;
+  small_group_overweight?: boolean;
+}
+
+export interface VerifyResult {
+  units: number;
+  amount_agorot: number;
+  today_total_agorot: number;
+}
+
+export interface PayoutLineRow {
+  id: number;
+  units: number;
+  amount_agorot: number;
+  created_at: string;
+  payout_id: string | null;
+}
+
+export interface InvoiceRow {
+  id: string;
+  invoice_number: string;
+  total_agorot: number;
+  pdf_path: string | null;
 }
