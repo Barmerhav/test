@@ -347,6 +347,16 @@ insert into public.strings (key, locale, value) values
 ('push.payout_sent.body',      'he', '{amount} בדרך לחשבון שלך'),
 ('push.payout_sent.body',      'en', '{amount} on its way to your account'),
 
+-- ── common ──────────────────────────────────────────────────────────────────
+('common.continue',              'he', 'המשך'),
+('common.continue',              'en', 'Continue'),
+('auth.send_cta',                'he', 'שלחו לי קוד'),
+('auth.send_cta',                'en', 'Send me a code'),
+('plan.change_title',            'he', 'תנאי המסלול עודכנו'),
+('plan.change_title',            'en', 'Your plan terms were updated'),
+('plan.change_cta',              'he', 'אישור המעבר לתנאים החדשים'),
+('plan.change_cta',              'en', 'Accept the new terms'),
+
 -- ── sms ─────────────────────────────────────────────────────────────────────
 ('sms.otp_body',                 'he', 'קוד הכניסה שלך לפינוי+: {otp}'),
 ('sms.otp_body',                 'en', 'Your Pinui+ sign-in code: {otp}'),

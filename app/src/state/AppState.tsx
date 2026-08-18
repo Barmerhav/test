@@ -1,0 +1,375 @@
+/**
+ * Global app state: session, hydrated my-state, config + strings stores
+ * (live-patched via Realtime), plans, and the active-request live card.
+ *
+ * PRIME DIRECTIVE: no hardcoded business values/strings — everything renders
+ * through useConfig()/useStr() backed by the `config` and `strings` tables.
+ */
+import type { Session } from "@supabase/supabase-js";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  configEntries,
+  getConfig,
+  type ConfigKey,
+  type ConfigStore,
+  type ConfigValues,
+} from "@pinui/shared";
+import { rpc, supabase } from "@/lib/supabase";
+import type {
+  Locale,
+  MyState,
+  MyStateUser,
+  PlanRow,
+  RequestRow,
+} from "@/lib/types";
+
+/** Terminal statuses the resident should still SEE on the home card until
+ * dismissed (celebration / credit banner / leak notice). */
+const STICKY_TERMINAL = ["paid", "expired", "declined_leak"] as const;
+
+type StrParams = Record<string, string | number>;
+export type StrFn = (key: string, params?: StrParams) => string;
+
+interface AppStateValue {
+  bootstrapped: boolean;
+  session: Session | null;
+  myState: MyState | null;
+  myStateLoaded: boolean;
+  plans: PlanRow[];
+  configStore: ConfigStore;
+  strings: ReadonlyMap<string, string>;
+  locale: Locale;
+  activeRequest: RequestRow | null;
+  str: StrFn;
+  refresh: () => Promise<MyState | null>;
+  refreshPlans: () => Promise<void>;
+  setActiveRequest: (row: RequestRow | null) => void;
+  dismissRequest: () => void;
+  patchUser: (user: MyStateUser) => void;
+  signOut: () => Promise<void>;
+}
+
+const AppStateContext = createContext<AppStateValue | null>(null);
+
+function stringsMapKey(locale: string, key: string): string {
+  return `${locale}:${key}`;
+}
+
+export function AppStateProvider({ children }: { children: React.ReactNode }) {
+  const [session, setSession] = useState<Session | null>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [configStore, setConfigStore] = useState<ConfigStore>({});
+  const [strings, setStrings] = useState<Map<string, string>>(new Map());
+  const [plans, setPlans] = useState<PlanRow[]>([]);
+  const [myState, setMyState] = useState<MyState | null>(null);
+  const [myStateLoaded, setMyStateLoaded] = useState(false);
+  const [activeRequest, setActiveRequestState] = useState<RequestRow | null>(null);
+
+  const sessionRef = useRef<Session | null>(null);
+  sessionRef.current = session;
+
+  // ── auth session ──────────────────────────────────────────────────────
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setSessionLoaded(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+    });
+    return () => {
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  // ── config + strings + plans hydration (anon-readable) ───────────────
+  const refreshPlans = useCallback(async () => {
+    const { data, error } = await supabase.from("plans").select("*");
+    if (!error && data) setPlans(data as PlanRow[]);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const hydrate = async () => {
+      const [cfgRes, strRes, planRes] = await Promise.all([
+        supabase.from("config").select("key,value"),
+        supabase.from("strings").select("key,locale,value"),
+        supabase.from("plans").select("*"),
+      ]);
+      if (!alive) return;
+      if (!cfgRes.error && cfgRes.data) {
+        const next: Record<string, unknown> = {};
+        for (const row of cfgRes.data as { key: string; value: unknown }[]) {
+          next[row.key] = row.value;
+        }
+        setConfigStore(next);
+      }
+      if (!strRes.error && strRes.data) {
+        const next = new Map<string, string>();
+        for (const row of strRes.data as {
+          key: string;
+          locale: string;
+          value: string;
+        }[]) {
+          next.set(stringsMapKey(row.locale, row.key), row.value);
+        }
+        setStrings(next);
+      }
+      if (!planRes.error && planRes.data) setPlans(planRes.data as PlanRow[]);
+      setHydrated(true);
+    };
+    void hydrate();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // ── live config/strings patches ───────────────────────────────────────
+  useEffect(() => {
+    const channel = supabase
+      .channel("cfg-strings-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "config" },
+        (payload) => {
+          const isDelete = payload.eventType === "DELETE";
+          const row = (isDelete ? payload.old : payload.new) as {
+            key?: string;
+            value?: unknown;
+          };
+          if (!row.key) return;
+          const key = row.key;
+          setConfigStore((prev) => {
+            const next: Record<string, unknown> = { ...prev };
+            if (isDelete) delete next[key];
+            else next[key] = row.value;
+            return next;
+          });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "strings" },
+        (payload) => {
+          const isDelete = payload.eventType === "DELETE";
+          const row = (isDelete ? payload.old : payload.new) as {
+            key?: string;
+            locale?: string;
+            value?: string;
+          };
+          if (!row.key || !row.locale) return;
+          const mapKey = stringsMapKey(row.locale, row.key);
+          setStrings((prev) => {
+            const next = new Map(prev);
+            if (isDelete) next.delete(mapKey);
+            else next.set(mapKey, row.value ?? "");
+            return next;
+          });
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // ── my state ──────────────────────────────────────────────────────────
+  const refresh = useCallback(async (): Promise<MyState | null> => {
+    if (!sessionRef.current) {
+      setMyState(null);
+      setActiveRequestState(null);
+      setMyStateLoaded(true);
+      return null;
+    }
+    try {
+      const st = await rpc<MyState>("get_my_state");
+      setMyState(st);
+      setActiveRequestState((prev) => {
+        if (st.active_request) return st.active_request;
+        // Keep celebratory/terminal rows on screen until the user dismisses.
+        if (prev && (STICKY_TERMINAL as readonly string[]).includes(prev.status)) {
+          return prev;
+        }
+        return null;
+      });
+      return st;
+    } catch {
+      return null;
+    } finally {
+      setMyStateLoaded(true);
+    }
+  }, []);
+
+  const uid = session?.user.id ?? null;
+
+  // TODO(later slice): push notifications — obtain an Expo push token
+  // (expo-notifications) and call api.register_device(p_expo_push_token,
+  // p_platform) here once the dependency lands with picker mode.
+
+  useEffect(() => {
+    setMyStateLoaded(false);
+    if (!uid) {
+      setMyState(null);
+      setActiveRequestState(null);
+      setMyStateLoaded(true);
+      return;
+    }
+    void refresh();
+  }, [uid, refresh]);
+
+  // ── live active-request updates ───────────────────────────────────────
+  useEffect(() => {
+    if (!uid) return;
+    const channel = supabase
+      .channel(`requests-${uid}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "requests",
+          filter: `resident_id=eq.${uid}`,
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") return;
+          const row = payload.new as RequestRow;
+          setActiveRequestState((prev) => {
+            if (row.status === "canceled" || row.status === "noshow") {
+              return prev && prev.id === row.id ? null : prev;
+            }
+            if (prev && prev.id !== row.id) {
+              // A different (newer) request supersedes the old card.
+              return row;
+            }
+            return row;
+          });
+          // Terminal transitions change allowance/credits — resync.
+          if (
+            ["paid", "expired", "noshow", "canceled", "declined_leak"].includes(
+              row.status,
+            )
+          ) {
+            void refresh();
+          }
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [uid, refresh]);
+
+  // ── strings accessor ──────────────────────────────────────────────────
+  const locale: Locale = myState?.user?.locale === "en" ? "en" : "he";
+
+  const str = useCallback<StrFn>(
+    (key, params) => {
+      const raw =
+        strings.get(stringsMapKey(locale, key)) ??
+        strings.get(stringsMapKey("he", key)) ??
+        strings.get(stringsMapKey("en", key));
+      if (raw === undefined) return `!${key}`;
+      if (!params) return raw;
+      return raw.replace(/\{(\w+)\}/g, (match, name: string) =>
+        Object.prototype.hasOwnProperty.call(params, name)
+          ? String(params[name])
+          : match,
+      );
+    },
+    [strings, locale],
+  );
+
+  const setActiveRequest = useCallback((row: RequestRow | null) => {
+    setActiveRequestState(row);
+  }, []);
+
+  const dismissRequest = useCallback(() => {
+    setActiveRequestState(null);
+  }, []);
+
+  const patchUser = useCallback((user: MyStateUser) => {
+    setMyState((prev) => (prev ? { ...prev, user } : prev));
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setMyState(null);
+    setActiveRequestState(null);
+  }, []);
+
+  const bootstrapped = sessionLoaded && hydrated;
+
+  const value = useMemo<AppStateValue>(
+    () => ({
+      bootstrapped,
+      session,
+      myState,
+      myStateLoaded,
+      plans,
+      configStore,
+      strings,
+      locale,
+      activeRequest,
+      str,
+      refresh,
+      refreshPlans,
+      setActiveRequest,
+      dismissRequest,
+      patchUser,
+      signOut,
+    }),
+    [
+      bootstrapped,
+      session,
+      myState,
+      myStateLoaded,
+      plans,
+      configStore,
+      strings,
+      locale,
+      activeRequest,
+      str,
+      refresh,
+      refreshPlans,
+      setActiveRequest,
+      dismissRequest,
+      patchUser,
+      signOut,
+    ],
+  );
+
+  return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
+}
+
+export function useAppState(): AppStateValue {
+  const ctx = useContext(AppStateContext);
+  if (!ctx) throw new Error("useAppState must be used inside AppStateProvider");
+  return ctx;
+}
+
+/** str(key, params?) with locale fallback he→en; returns '!key' when missing. */
+export function useStr(): StrFn {
+  return useAppState().str;
+}
+
+/** Typed config accessor; falls back to the shared seed default on bad rows
+ * so a mid-flight config patch can never crash the UI. */
+export function useConfig<K extends ConfigKey>(key: K): ConfigValues[K] {
+  const { configStore } = useAppState();
+  return useMemo(() => {
+    try {
+      return getConfig(configStore, key);
+    } catch {
+      return configEntries[key].default as ConfigValues[K];
+    }
+  }, [configStore, key]);
+}
