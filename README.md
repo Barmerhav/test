@@ -60,6 +60,19 @@ pnpm app:start              # Expo dev server
 Local OTP: the phone numbers in `supabase/config.toml [auth.sms.test_otp]`
 (e.g. `972501000001` / code `111111`) sign in without real SMS.
 
+### Demo mode (seeded)
+
+`supabase db reset` seeds a demo building (רחוב הדוגמה 12, ת"א · bin QR
+`BIN-DEMO-0001` · entry code `2468#`) and users matching the test OTPs:
+
+| Who | Phone | OTP |
+|---|---|---|
+| Residents (M plan active) | `0501000001‑3` | `111111` |
+| Resident, no subscription | `0501000004` | `111111` |
+| Pickers (verified) | `0502000001‑2` | `222222` |
+| Picker in verification queue | `0502000003` | `222222` |
+| Admin (also `admin@pinui.local` / `pinui-admin-local` in the web panel) | `0503000001` | `333333` |
+
 ## Tests (the money paths)
 
 ```bash

@@ -114,6 +114,33 @@ Deno.serve(
         return json({ status: "pending" });
       }
 
+      case "charge_on_demand": {
+        const { data, error } = await svc.schema("api").rpc("service_charge_on_demand", {
+          p_user_id: user.id,
+          p_ttl_option: body.ttl_option ?? null,
+        });
+        if (error) throw new HttpError(400, error.message);
+        await processCharge(data as ChargeSetup);
+        return json({ status: "pending" });
+      }
+
+      case "charge_backstop": {
+        if (!body.request_id) throw new HttpError(400, "request_id required");
+        // ownership check under RLS before service-side work
+        const { data: own } = await userClient(req)
+          .from("requests")
+          .select("id")
+          .eq("id", body.request_id)
+          .maybeSingle();
+        if (!own) throw new HttpError(403, "not_authorized");
+        const { data, error } = await svc.schema("api").rpc("service_charge_backstop", {
+          p_request_id: body.request_id,
+        });
+        if (error) throw new HttpError(400, error.message);
+        await processCharge(data as ChargeSetup);
+        return json({ status: "pending" });
+      }
+
       default:
         throw new HttpError(400, "unknown action");
     }
