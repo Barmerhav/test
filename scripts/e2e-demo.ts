@@ -58,7 +58,7 @@ async function rpcOrThrow<T>(c: SupabaseClient, fn: string, args?: Record<string
 }
 
 async function main() {
-  console.log("\n🗑️  פינוי+ — full two-sided demo loop\n" + "─".repeat(48));
+  console.log("\n🗑️  למטה — full two-sided demo loop\n" + "─".repeat(48));
 
   step("דנה (דיירת) מתחברת עם OTP מדומה");
   const dana = await signIn("972501000001", "111111");
