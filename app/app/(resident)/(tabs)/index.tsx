@@ -2,15 +2,19 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React from "react";
 import { View } from "react-native";
-import { ACTIVE_FOR_RESIDENT } from "@pinui/shared";
+import { ACTIVE_FOR_RESIDENT, formatILS } from "@pinui/shared";
 import { ActiveRequestCard } from "@/components/ActiveRequestCard";
 import { AllowanceRing } from "@/components/AllowanceRing";
+import { payForSubscription, waitForSubscriptionActive } from "@/lib/payments";
 import { useAppState, useStr } from "@/state/AppState";
-import { Pressy } from "@/ui/Pressy";
+import { Button } from "@/ui/Button";
+import { Card } from "@/ui/Card";
+import { fireHaptic, Pressy } from "@/ui/Pressy";
 import { Brand } from "@/ui/Brand";
 import { Screen } from "@/ui/Screen";
 import { colors, greenShadow, radii, shadow, spacing, TAP } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
+import { useRpcErrorToast } from "@/ui/Toast";
 
 /** Overlapping neighbor avatars (visual only — counts come from state). */
 function NeighborAvatars({ doors }: { doors: number }) {
@@ -65,8 +69,10 @@ function NeighborAvatars({ doors }: { doors: number }) {
 export default function HomeScreen() {
   const str = useStr();
   const router = useRouter();
+  const rpcErrorToast = useRpcErrorToast();
   const { myState, activeRequest, refresh } = useAppState();
   const [refreshing, setRefreshing] = React.useState(false);
+  const [payingPastDue, setPayingPastDue] = React.useState(false);
 
   const sub = myState?.subscription ?? null;
   const residency = myState?.residency ?? null;
@@ -85,6 +91,23 @@ export default function HomeScreen() {
     setRefreshing(true);
     await refresh();
     setRefreshing(false);
+  };
+
+  /** past_due recovery: re-charge the subscription, then poll until active
+   * (the billing worker also auto-retries server-side). */
+  const payPastDue = async () => {
+    if (!sub) return;
+    setPayingPastDue(true);
+    try {
+      await payForSubscription(sub.id);
+      const active = await waitForSubscriptionActive();
+      await refresh();
+      if (active) void fireHaptic("success");
+    } catch (err) {
+      rpcErrorToast(err);
+    } finally {
+      setPayingPastDue(false);
+    }
   };
 
   return (
@@ -123,6 +146,7 @@ export default function HomeScreen() {
             accessibilityRole="button"
             onPress={() => router.push("/(resident)/settings")}
             haptic="light"
+            hitSlop={8}
             style={{
               width: 38,
               height: 38,
@@ -138,6 +162,24 @@ export default function HomeScreen() {
           </Pressy>
         </View>
       </View>
+
+      {/* past_due: pay-now banner — the button must never just be grey */}
+      {sub?.status === "past_due" ? (
+        <Card accent style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
+          <AppText weight="heavy" size={15}>
+            {str("home.past_due")}
+          </AppText>
+          <Button
+            label={str("plan.pay_cta", {
+              price: formatILS(sub.plan.price_agorot),
+            })}
+            onPress={() => void payPastDue()}
+            loading={payingPastDue}
+            compact
+            haptic="medium"
+          />
+        </Card>
+      ) : null}
 
       {activeRequest ? (
         <ActiveRequestCard request={activeRequest} />

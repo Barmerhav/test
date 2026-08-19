@@ -17,7 +17,7 @@ import {
   PSegmented,
 } from "@/ui/PickerUI";
 import { fireHaptic, Pressy } from "@/ui/Pressy";
-import { SkeletonList } from "@/ui/Skeleton";
+import { QueryState } from "@/ui/QueryState";
 import { pickerColors as pc, radii, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
 import { useRpcErrorToast, useToast } from "@/ui/Toast";
@@ -39,11 +39,13 @@ export default function FeedScreen() {
   const { session, myState, patchPicker, refresh } = useAppState();
 
   const [rows, setRows] = useState<FeedRow[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [activeStops, setActiveStops] = useState(0);
   const coordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  const claimingRef = useRef(false);
 
   const available = myState?.picker?.available ?? false;
   const uid = session?.user.id ?? null;
@@ -72,6 +74,7 @@ export default function FeedScreen() {
         : {};
       const data = await rpc<FeedRow[]>("open_feed", args);
       setRows(data ?? []);
+      setLoadError(false);
       if (uid) {
         const { count } = await supabase
           .from("claims")
@@ -81,7 +84,8 @@ export default function FeedScreen() {
         setActiveStops(count ?? 0);
       }
     } catch (err) {
-      setRows((prev) => prev ?? []);
+      // network failure must never masquerade as "no requests nearby"
+      setLoadError(true);
       if (rpcErrorCode(err) !== "unknown") rpcErrorToast(err);
     }
   }, [rpcErrorToast, uid]);
@@ -111,6 +115,9 @@ export default function FeedScreen() {
   };
 
   const claim = async (row: FeedRow) => {
+    // hard in-flight guard: one claim at a time (cards + map pins)
+    if (claimingRef.current) return;
+    claimingRef.current = true;
     setClaimingId(row.request_id);
     try {
       await rpc<ClaimResult>("claim_request", { p_request_id: row.request_id });
@@ -125,6 +132,7 @@ export default function FeedScreen() {
         rpcErrorToast(err);
       }
     } finally {
+      claimingRef.current = false;
       setClaimingId(null);
     }
   };
@@ -220,6 +228,7 @@ export default function FeedScreen() {
           label={grouped ? str("feed.claim_all_cta") : str("feed.claim_cta")}
           onPress={() => void claim(item)}
           loading={claimingId === item.request_id}
+          disabled={claimingId !== null && claimingId !== item.request_id}
           compact={!grouped}
           haptic="medium"
         />
@@ -290,10 +299,18 @@ export default function FeedScreen() {
         <FeedMap
           rows={rows}
           userCoords={coordsRef.current}
+          disabled={claimingId !== null}
           onPressRow={(row) => void claim(row)}
         />
-      ) : rows === null ? (
-        <SkeletonList rows={4} height={110} dark />
+      ) : rows === null || (loadError && (rows?.length ?? 0) === 0) ? (
+        <QueryState
+          loading={rows === null && !loadError}
+          error={loadError && (rows?.length ?? 0) === 0}
+          onRetry={() => void load()}
+          dark
+          rows={4}
+          rowHeight={110}
+        />
       ) : (
         <FlatList
           data={groupLeaders}

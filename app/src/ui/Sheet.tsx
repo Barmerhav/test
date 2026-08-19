@@ -1,7 +1,8 @@
 import React from "react";
-import { Modal, Pressable, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing } from "./theme";
+import { ModalToastHost } from "./Toast";
 
 export interface SheetProps {
   visible: boolean;
@@ -9,12 +10,16 @@ export interface SheetProps {
   children: React.ReactNode;
 }
 
-/** Bottom sheet: white, 28px top radius, grabber, scrim per the artboards. */
+/** Bottom sheet: white, 28px top radius, grabber, scrim per the artboards.
+ * Keyboard-aware (card forms) and hosts its own toast layer above the modal. */
 export function Sheet({ visible, onClose, children }: SheetProps) {
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={{ flex: 1, justifyContent: "flex-end" }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, justifyContent: "flex-end" }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
         <Pressable
           onPress={onClose}
           style={{
@@ -54,7 +59,8 @@ export function Sheet({ visible, onClose, children }: SheetProps) {
           />
           {children}
         </View>
-      </View>
+      </KeyboardAvoidingView>
+      <ModalToastHost />
     </Modal>
   );
 }

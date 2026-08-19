@@ -15,7 +15,7 @@ import type { InvoiceRow, PayoutLineRow } from "@/lib/types";
 import { useAppState, useConfig, useStr } from "@/state/AppState";
 import { PCard, PSegmented } from "@/ui/PickerUI";
 import { Pressy } from "@/ui/Pressy";
-import { SkeletonList } from "@/ui/Skeleton";
+import { QueryState } from "@/ui/QueryState";
 import { PICKER_TAP, pickerColors as pc, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
 import { useRpcErrorToast } from "@/ui/Toast";
@@ -54,6 +54,7 @@ export default function EarningsScreen() {
 
   const [period, setPeriod] = useState<Period>("today");
   const [lines, setLines] = useState<PayoutLineRow[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [invoices, setInvoices] = useState<InvoiceRowFull[]>([]);
   const [bank, setBank] = useState<BankDetails | null>(null);
   const [nextPayout, setNextPayout] = useState<string | null>(null);
@@ -82,7 +83,13 @@ export default function EarningsScreen() {
         .order("created_at", { ascending: false })
         .limit(1),
     ]);
-    if (!lineRes.error && lineRes.data) setLines(lineRes.data as PayoutLineRow[]);
+    if (!lineRes.error && lineRes.data) {
+      setLines(lineRes.data as PayoutLineRow[]);
+      setLoadError(false);
+    } else if (lineRes.error) {
+      // failed query resolves to an error state — never eternal shimmer
+      setLoadError(true);
+    }
     if (!invRes.error && invRes.data) setInvoices(invRes.data as InvoiceRowFull[]);
     const pickerRow = (pickerRes.data as { bank_details: BankDetails | null }[] | null)?.[0];
     if (pickerRow?.bank_details) setBank(pickerRow.bank_details);
@@ -196,7 +203,14 @@ export default function EarningsScreen() {
       />
 
       {lines === null ? (
-        <SkeletonList rows={3} height={110} dark />
+        <QueryState
+          loading={!loadError}
+          error={loadError}
+          onRetry={() => void load()}
+          dark
+          rows={3}
+          rowHeight={110}
+        />
       ) : (
         <View style={{ gap: spacing.md }}>
           {/* big total + stats */}

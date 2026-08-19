@@ -100,7 +100,13 @@ export function AllowanceRing({
             paddingVertical: 4,
           }}
         >
-          <AppText weight="bold" size={12.5} color={colors.greenDeep}>
+          {/* LTR isolation so the leading '+' never bidi-flips to '3+' */}
+          <AppText
+            weight="bold"
+            size={12.5}
+            color={colors.greenDeep}
+            style={{ writingDirection: "ltr" }}
+          >
             {str("home.credits_left", { units: credits })}
           </AppText>
         </View>

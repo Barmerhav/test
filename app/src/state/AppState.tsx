@@ -17,7 +17,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Platform } from "react-native";
+import { AppState as RNAppState, Platform } from "react-native";
 import {
   configEntries,
   getConfig,
@@ -55,6 +55,8 @@ interface AppStateValue {
   session: Session | null;
   myState: MyState | null;
   myStateLoaded: boolean;
+  /** the last get_my_state attempt failed (boot error state + retry) */
+  myStateError: boolean;
   plans: PlanRow[];
   configStore: ConfigStore;
   strings: ReadonlyMap<string, string>;
@@ -85,10 +87,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [myState, setMyState] = useState<MyState | null>(null);
   const [myStateLoaded, setMyStateLoaded] = useState(false);
+  const [myStateError, setMyStateError] = useState(false);
   const [activeRequest, setActiveRequestState] = useState<RequestRow | null>(null);
-
-  const sessionRef = useRef<Session | null>(null);
-  sessionRef.current = session;
 
   // Last dismissed terminal request id (hydrated from storage once).
   const dismissedIdRef = useRef<string | null>(null);
@@ -207,7 +207,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   // ── my state ──────────────────────────────────────────────────────────
   const refresh = useCallback(async (): Promise<MyState | null> => {
-    if (!sessionRef.current) {
+    // Read the session straight from the auth client: right after verifyOtp
+    // resolves, React state (and any render-assigned ref) hasn't flushed yet
+    // under the concurrent root, but the client already holds the session.
+    const { data } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+    if (!data.session) {
       setMyState(null);
       setActiveRequestState(null);
       setMyStateLoaded(true);
@@ -233,8 +237,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         }
         return null;
       });
+      setMyStateError(false);
       return st;
     } catch {
+      setMyStateError(true);
       return null;
     } finally {
       setMyStateLoaded(true);
@@ -244,9 +250,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const uid = session?.user.id ?? null;
 
   // ── push token registration (best-effort; silent on simulator/denied) ─
-  const pushRegisteredRef = useRef(false);
+  // Keyed per uid so a second account on the same device registers too.
+  const pushRegisteredForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!uid || pushRegisteredRef.current) return;
+    if (!uid || pushRegisteredForRef.current === uid) return;
     const register = async () => {
       try {
         const perms = await Notifications.requestPermissionsAsync();
@@ -258,7 +265,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           p_expo_push_token: token.data,
           p_platform: platform,
         });
-        pushRegisteredRef.current = true;
+        pushRegisteredForRef.current = uid;
       } catch {
         // no push on this device/session — fine
       }
@@ -266,15 +273,39 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     void register();
   }, [uid]);
 
+  // Boot load with retry + backoff — a single transient failure must never
+  // strand a signed-in user on a blank screen.
   useEffect(() => {
     setMyStateLoaded(false);
     if (!uid) {
       setMyState(null);
       setActiveRequestState(null);
       setMyStateLoaded(true);
+      setMyStateError(false);
       return;
     }
-    void refresh();
+    let alive = true;
+    const boot = async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const st = await refresh();
+        if (st || !alive) return;
+        await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+      }
+    };
+    void boot();
+    return () => {
+      alive = false;
+    };
+  }, [uid, refresh]);
+
+  // Returning to the foreground resyncs state (also recovers a failed boot
+  // once connectivity is back).
+  useEffect(() => {
+    if (!uid) return;
+    const sub = RNAppState.addEventListener("change", (next) => {
+      if (next === "active") void refresh();
+    });
+    return () => sub.remove();
   }, [uid, refresh]);
 
   // ── live active-request updates ───────────────────────────────────────
@@ -377,6 +408,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       session,
       myState,
       myStateLoaded,
+      myStateError,
       plans,
       configStore,
       strings,
@@ -396,6 +428,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       session,
       myState,
       myStateLoaded,
+      myStateError,
       plans,
       configStore,
       strings,

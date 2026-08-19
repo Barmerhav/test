@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Modal, View } from "react-native";
+import { Linking, Modal, View } from "react-native";
 import { countUnits } from "@pinui/shared";
 import { base64ToArrayBuffer } from "@/lib/base64";
 import { rpc, supabase } from "@/lib/supabase";
@@ -18,7 +18,7 @@ import { PButton, PCard, PScreen } from "@/ui/PickerUI";
 import { fireHaptic, Pressy } from "@/ui/Pressy";
 import { PICKER_TAP, pickerColors as pc, radii, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
-import { useRpcErrorToast, useToast } from "@/ui/Toast";
+import { ModalToastHost, useRpcErrorToast, useToast } from "@/ui/Toast";
 
 /** Collection per artboard 12: checklist per bag, ×2-oversized chips, leak
  * photo flow, one CTA that leads straight to the bin QR scan. */
@@ -124,6 +124,12 @@ export default function CollectScreen() {
 
   const openLeakCamera = async () => {
     if (!permission?.granted) {
+      if (permission && !permission.canAskAgain) {
+        // permanently denied — route the picker to system settings
+        show(str("common.camera_permission"), "error");
+        await Linking.openSettings().catch(() => undefined);
+        return;
+      }
       const p = await requestPermission();
       if (!p.granted) {
         show(str("common.camera_permission"), "error");
@@ -227,6 +233,7 @@ export default function CollectScreen() {
                     setTicked((prev) => prev.map((v, j) => (j === i ? !v : v)))
                   }
                   haptic="light"
+                  hitSlop={14}
                   style={{
                     width: 30,
                     height: 30,
@@ -256,6 +263,7 @@ export default function CollectScreen() {
                     setOversized((prev) => prev.map((v, j) => (j === i ? !v : v)))
                   }
                   haptic="light"
+                  hitSlop={12}
                   style={{
                     borderRadius: radii.pill,
                     borderWidth: 1.5,
@@ -389,6 +397,8 @@ export default function CollectScreen() {
             <View style={{ width: PICKER_TAP, height: PICKER_TAP }} />
           </View>
         </View>
+        {/* keep error toasts visible above this native modal (Android) */}
+        <ModalToastHost />
       </Modal>
     </PScreen>
   );

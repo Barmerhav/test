@@ -11,10 +11,12 @@ import {
   JetBrainsMono_700Bold,
   JetBrainsMono_800ExtraBold,
 } from "@expo-google-fonts/jetbrains-mono";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
+import * as Updates from "expo-updates";
 import React, { useEffect } from "react";
 import { I18nManager } from "react-native";
 import { routeForState } from "@/lib/routing";
@@ -28,6 +30,24 @@ if (!I18nManager.isRTL) {
   I18nManager.forceRTL(true);
 }
 
+/** forceRTL only persists a native preference for the NEXT start, so the very
+ * first launch on an LTR-locale device would run mirrored. Reload once
+ * (guarded by a storage flag so it can never loop; skipped in dev where the
+ * dev-menu reload covers it). */
+const RTL_RELOAD_KEY = "pinui.rtl_reloaded_once";
+async function ensureRtlApplied(): Promise<void> {
+  if (I18nManager.isRTL || __DEV__) return;
+  try {
+    const already = await AsyncStorage.getItem(RTL_RELOAD_KEY);
+    if (already) return;
+    await AsyncStorage.setItem(RTL_RELOAD_KEY, "1");
+    await Updates.reloadAsync();
+  } catch {
+    // reload unavailable (e.g. updates disabled) — the app stays usable and
+    // picks up RTL on the next natural restart
+  }
+}
+
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
@@ -36,6 +56,10 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   const router = useRouter();
 
   const ready = fontsLoaded && bootstrapped && (!session || myStateLoaded);
+
+  useEffect(() => {
+    void ensureRtlApplied();
+  }, []);
 
   useEffect(() => {
     if (ready) void SplashScreen.hideAsync().catch(() => undefined);

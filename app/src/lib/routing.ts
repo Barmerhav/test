@@ -21,7 +21,9 @@ export function routeForState(st: MyState): RouteTarget {
   if (!st.residency) {
     return { group: "(onboarding)", href: "/(onboarding)/address" };
   }
-  if (!st.subscription) {
+  // pending_payment = abandoned checkout — the plan screen owns recovery
+  // (it re-opens the PaymentSheet; picking a different plan restarts fresh).
+  if (!st.subscription || st.subscription.status === "pending_payment") {
     return { group: "(onboarding)", href: "/(onboarding)/plan" };
   }
   return { group: "(resident)", href: "/(resident)" };

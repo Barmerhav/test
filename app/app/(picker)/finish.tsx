@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { View } from "react-native";
+import { Linking, View } from "react-native";
 import { formatILS, rpcErrorCode } from "@pinui/shared";
 import { startOfToday } from "@/lib/dates";
 import { rpc, supabase } from "@/lib/supabase";
@@ -160,9 +160,17 @@ export default function FinishScreen() {
           </View>
           {goal && goalFraction !== null ? (
             <View style={{ width: "100%", maxWidth: 290, marginTop: spacing.lg }}>
-              {/* goal label pending a strings key (finish.daily_goal) — the
-                  bar tracks today's total vs the best previous day */}
-              <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
+              {/* goal = best previous day, derived from payout_lines */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "baseline",
+                }}
+              >
+                <AppText size={12} color={pc.muted}>
+                  {str("finish.daily_goal")}
+                </AppText>
                 <MonoText size={11.5} color={pc.muted}>
                   {formatILS(goal)}
                 </MonoText>
@@ -223,12 +231,22 @@ export default function FinishScreen() {
           <AppText size={14.5} color={pc.muted} center>
             {str("common.camera_permission")}
           </AppText>
-          <PButton
-            label={str("common.continue")}
-            kind="ghost"
-            onPress={() => void requestPermission()}
-            compact
-          />
+          {permission && !permission.canAskAgain ? (
+            // permanently denied — the fix lives in system settings
+            <PButton
+              label={str("settings.title")}
+              kind="ghost"
+              onPress={() => void Linking.openSettings().catch(() => undefined)}
+              compact
+            />
+          ) : (
+            <PButton
+              label={str("common.continue")}
+              kind="ghost"
+              onPress={() => void requestPermission()}
+              compact
+            />
+          )}
         </View>
       )}
     </PScreen>

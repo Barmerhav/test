@@ -481,6 +481,10 @@ insert into public.strings (key, locale, value) values
 ('common.camera_permission','en', 'Camera permission is needed to continue'),
 ('common.continue',         'he', 'ממשיכים'),
 ('common.continue',         'en', 'Continue'),
+('common.retry',            'he', 'לנסות שוב'),
+('common.retry',            'en', 'Try again'),
+('home.past_due',           'he', 'החיוב האחרון נכשל — המנוי מושהה עד לתשלום'),
+('home.past_due',           'en', 'Last charge failed — your plan is paused until payment'),
 
 ('earnings.title',          'he', 'רווחים'),
 ('earnings.title',          'en', 'Earnings'),

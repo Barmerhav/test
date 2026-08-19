@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { formatILS } from "@pinui/shared";
 import { PaymentSheet } from "@/components/PaymentSheet";
@@ -11,6 +11,7 @@ import { useAppState, useStr } from "@/state/AppState";
 import { Button } from "@/ui/Button";
 import { Chip } from "@/ui/Chip";
 import { Pressy } from "@/ui/Pressy";
+import { QueryState } from "@/ui/QueryState";
 import { Screen } from "@/ui/Screen";
 import { colors, radii, shadow, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
@@ -30,7 +31,7 @@ export default function PlanScreen() {
   const str = useStr();
   const router = useRouter();
   const rpcErrorToast = useRpcErrorToast();
-  const { plans, myState, refresh } = useAppState();
+  const { plans, myState, refresh, refreshPlans } = useAppState();
 
   const [household, setHousehold] = useState<number | null>(null);
   const [bagsIdx, setBagsIdx] = useState<number | null>(null);
@@ -38,6 +39,8 @@ export default function PlanScreen() {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [paySubId, setPaySubId] = useState<string | null>(null);
+  const [payPrice, setPayPrice] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const signupPlans = useMemo(
     () =>
@@ -46,6 +49,18 @@ export default function PlanScreen() {
         .sort((a, b) => a.units_per_month - b.units_per_month),
     [plans],
   );
+
+  // The one-shot hydration fetch can fail on flaky networks at the most
+  // fragile point of the funnel — retry whenever we arrive with no plans.
+  useEffect(() => {
+    if (plans.length === 0) void refreshPlans();
+  }, [plans.length, refreshPlans]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([refreshPlans(), refresh()]);
+    setRefreshing(false);
+  };
 
   const recommended = useMemo(() => {
     if (bagsIdx === null) return null;
@@ -59,10 +74,22 @@ export default function PlanScreen() {
     if (recommended) setSelectedPlanId(recommended.id);
   }, [recommended]);
 
-  // relaunch mid-flow with a pending_payment subscription → back to payment
+  // relaunch mid-flow with a pending_payment subscription → back to payment,
+  // with the pending plan pre-selected so the CTA price matches the charge.
+  // Once the user closes the sheet for that sub, don't auto-reopen it — the
+  // CTA below still resumes (or restarts with a different plan).
+  const dismissedRecoveryRef = useRef<string | null>(null);
   useEffect(() => {
     const sub = myState?.subscription;
-    if (sub && sub.status === "pending_payment") setPaySubId(sub.id);
+    if (
+      sub &&
+      sub.status === "pending_payment" &&
+      dismissedRecoveryRef.current !== sub.id
+    ) {
+      setSelectedPlanId(sub.plan.id);
+      setPayPrice(sub.plan.price_agorot);
+      setPaySubId(sub.id);
+    }
   }, [myState?.subscription]);
 
   const selectedPlan: PlanRow | null =
@@ -74,14 +101,23 @@ export default function PlanScreen() {
     setStarting(true);
     try {
       const existing = myState?.subscription;
-      if (existing && existing.status === "pending_payment") {
+      if (
+        existing &&
+        existing.status === "pending_payment" &&
+        existing.plan.id === selectedPlan.id
+      ) {
+        // same plan — resume the pending checkout
+        setPayPrice(existing.plan.price_agorot);
         setPaySubId(existing.id);
       } else {
+        // different (or no) plan — start fresh; the server auto-cancels a
+        // stale pending_payment row inside start_subscription
         const sub = await rpc<MySubscription>("start_subscription", {
           p_plan_id: selectedPlan.id,
           p_residency_id: residencyId,
           p_bag_format: format,
         });
+        setPayPrice(selectedPlan.price_agorot);
         setPaySubId(sub.id);
       }
     } catch (err) {
@@ -92,7 +128,12 @@ export default function PlanScreen() {
   };
 
   return (
-    <Screen title={str("plan.title")} subtitle={str("plan.subtitle")}>
+    <Screen
+      title={str("plan.title")}
+      subtitle={str("plan.subtitle")}
+      refreshing={refreshing}
+      onRefresh={() => void onRefresh()}
+    >
       <View style={{ gap: spacing.lg }}>
         {/* two tailoring questions */}
         <View style={{ gap: spacing.sm }}>
@@ -150,7 +191,15 @@ export default function PlanScreen() {
           </View>
         </View>
 
-        {/* plan cards */}
+        {/* plan cards — explicit error/retry when the fetch failed */}
+        {signupPlans.length === 0 ? (
+          <QueryState
+            loading={false}
+            error
+            onRetry={() => void onRefresh()}
+            rows={2}
+          />
+        ) : null}
         <View style={{ gap: spacing.md }}>
           {signupPlans.map((plan) => {
             const selected = plan.id === selectedPlanId;
@@ -261,7 +310,11 @@ export default function PlanScreen() {
       <PaymentSheet
         visible={paySubId !== null}
         subscriptionId={paySubId}
-        onClose={() => setPaySubId(null)}
+        priceAgorot={payPrice}
+        onClose={() => {
+          dismissedRecoveryRef.current = paySubId;
+          setPaySubId(null);
+        }}
         onSuccess={() => {
           setPaySubId(null);
           void refresh();

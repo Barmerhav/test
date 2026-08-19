@@ -32,6 +32,7 @@ function StepperRow({
       accessibilityRole="button"
       onPress={onPress}
       haptic="light"
+      hitSlop={6}
       style={{
         width: 40,
         height: 40,

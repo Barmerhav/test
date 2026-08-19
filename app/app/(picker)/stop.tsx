@@ -1,7 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
-import { Linking, ScrollView, View } from "react-native";
+import {
+  AppState as RNAppState,
+  Linking,
+  RefreshControl,
+  ScrollView,
+  View,
+} from "react-native";
 import { formatILS } from "@pinui/shared";
 import { formatCountdown } from "@/lib/dates";
 import { rpc, supabase } from "@/lib/supabase";
@@ -16,6 +22,7 @@ import { useNow } from "@/lib/useNow";
 import { useAppState, useStr } from "@/state/AppState";
 import { PButton, PCard, PConfirmButton, PScreen } from "@/ui/PickerUI";
 import { Pressy } from "@/ui/Pressy";
+import { QueryState } from "@/ui/QueryState";
 import { pickerColors as pc, radii, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
 import { useRpcErrorToast } from "@/ui/Toast";
@@ -26,6 +33,9 @@ interface StopData {
   residencies: Map<string, StopResidencyRow>;
   building: StopBuildingRow | null;
 }
+
+/** Poll cadence while the stop screen is focused (confirm-first unlocks). */
+const STOP_POLL_MS = 20_000;
 
 async function navigateTo(lat: number, lng: number): Promise<void> {
   const waze = `waze://?ll=${lat},${lng}&navigate=yes`;
@@ -52,6 +62,8 @@ export default function StopScreen() {
   const now = useNow();
 
   const [data, setData] = useState<StopData | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [reveal, setReveal] = useState<RevealResult | null>(null);
   const [revealing, setRevealing] = useState(false);
   const [releasing, setReleasing] = useState(false);
@@ -66,6 +78,12 @@ export default function StopScreen() {
       .eq("picker_id", uid)
       .eq("status", "active")
       .order("claimed_at", { ascending: true });
+    if (claimsRes.error) {
+      // a failed query must NEVER read as "you have no stops"
+      setLoadError(true);
+      return;
+    }
+    setLoadError(false);
     const claims = (claimsRes.data ?? []) as ClaimRow[];
     if (claims.length === 0) {
       setData({ claims: [], requests: new Map(), residencies: new Map(), building: null });
@@ -99,11 +117,27 @@ export default function StopScreen() {
     setData({ claims, requests, residencies, building });
   }, [uid]);
 
+  // refetch on focus + poll while focused + resync on app foreground, so
+  // waiting-resident doors unlock the moment the resident approves
   useFocusEffect(
     useCallback(() => {
       void load();
+      const interval = setInterval(() => void load(), STOP_POLL_MS);
+      const sub = RNAppState.addEventListener("change", (next) => {
+        if (next === "active") void load();
+      });
+      return () => {
+        clearInterval(interval);
+        sub.remove();
+      };
     }, [load]),
   );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
 
   const claims = data?.claims ?? [];
   const building = data?.building ?? null;
@@ -134,18 +168,23 @@ export default function StopScreen() {
   const nextCollectable = claims.find(
     (c) => data?.requests.get(c.request_id)?.status === "claimed",
   );
+  /** reveal_entry_code only accepts a claim whose request is claimed/collected
+   * — never point it at a door still waiting on the resident */
+  const revealableClaim = claims.find((c) => {
+    const s = data?.requests.get(c.request_id)?.status;
+    return s === "claimed" || s === "collected";
+  });
   const revealExpired =
     reveal?.reveal_expires_at !== null &&
     reveal?.reveal_expires_at !== undefined &&
     new Date(reveal.reveal_expires_at).getTime() <= now;
 
   const doReveal = async () => {
-    const first = claims[0];
-    if (!first) return;
+    if (!revealableClaim) return;
     setRevealing(true);
     try {
       const result = await rpc<RevealResult>("reveal_entry_code", {
-        p_claim_id: first.id,
+        p_claim_id: revealableClaim.id,
       });
       setReveal(result);
     } catch (err) {
@@ -180,7 +219,25 @@ export default function StopScreen() {
     }
   };
 
-  if (data !== null && claims.length === 0) {
+  // query failed with nothing to show → explicit error + retry (never the
+  // "no active stop" empty state); loading → skeleton
+  if (loadError && data === null) {
+    return (
+      <PScreen scroll={false} title={str("stop.title")} contentStyle={{ justifyContent: "center" }}>
+        <QueryState loading={false} error onRetry={() => void load()} dark />
+      </PScreen>
+    );
+  }
+
+  if (data === null) {
+    return (
+      <PScreen scroll={false} title={str("stop.title")}>
+        <QueryState loading error={false} onRetry={() => void load()} dark rows={3} />
+      </PScreen>
+    );
+  }
+
+  if (claims.length === 0) {
     return (
       <PScreen scroll={false} title={str("stop.title")} contentStyle={{ justifyContent: "center" }}>
         <View style={{ alignItems: "center", gap: spacing.md }}>
@@ -205,6 +262,13 @@ export default function StopScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: spacing.lg }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor={pc.green}
+          />
+        }
       >
         {/* header: street + meta + navigate */}
         <View
@@ -297,7 +361,7 @@ export default function StopScreen() {
                 </View>
               ) : null}
             </>
-          ) : (
+          ) : revealableClaim ? (
             <PButton
               label={str("stop.entry_code")}
               onPress={() => void doReveal()}
@@ -305,6 +369,11 @@ export default function StopScreen() {
               style={{ alignSelf: "stretch" }}
               haptic="medium"
             />
+          ) : (
+            // every door is still waiting on its resident — no reveal yet
+            <AppText size={13} color={pc.muted} center>
+              {str("stop.waiting_resident")}
+            </AppText>
           )}
         </PCard>
 

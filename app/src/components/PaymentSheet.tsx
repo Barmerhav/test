@@ -14,11 +14,13 @@ import { Sheet } from "@/ui/Sheet";
 import { colors, spacing } from "@/ui/theme";
 import { AppText } from "@/ui/Text";
 import { useRpcErrorToast, useToast } from "@/ui/Toast";
-import { stringsKeyForError } from "@pinui/shared";
+import { formatILS, stringsKeyForError } from "@pinui/shared";
 
 export interface PaymentSheetProps {
   visible: boolean;
   subscriptionId: string | null;
+  /** monthly price of the plan being paid (drives the CTA label) */
+  priceAgorot: number | null;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -31,11 +33,14 @@ export interface PaymentSheetProps {
 export function PaymentSheet({
   visible,
   subscriptionId,
+  priceAgorot,
   onClose,
   onSuccess,
 }: PaymentSheetProps) {
   const str = useStr();
-  const { refresh } = useAppState();
+  const { refresh, myState } = useAppState();
+  // fall back to the pending subscription's plan price on recovery flows
+  const effectivePrice = priceAgorot ?? myState?.subscription?.plan.price_agorot ?? null;
   const { show } = useToast();
   const rpcErrorToast = useRpcErrorToast();
   // Card fields are cosmetic in mock mode — masks, not user-facing copy.
@@ -116,7 +121,13 @@ export function PaymentSheet({
               style={{ flex: 1 }}
             />
           </View>
-          <Button label={str("plan.pay_cta")} onPress={() => void pay()} />
+          <Button
+            label={str("plan.pay_cta", {
+              price: effectivePrice !== null ? formatILS(effectivePrice) : "—",
+            })}
+            onPress={() => void pay()}
+            haptic="medium"
+          />
         </View>
       )}
     </Sheet>

@@ -12,8 +12,8 @@ import { useAppState, useConfig, useStr } from "@/state/AppState";
 import { Button, ConfirmButton } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { fireHaptic } from "@/ui/Pressy";
+import { QueryState } from "@/ui/QueryState";
 import { Screen } from "@/ui/Screen";
-import { SkeletonList } from "@/ui/Skeleton";
 import { pillKindForStatus, StatusPill } from "@/ui/StatusPill";
 import { colors, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
@@ -24,10 +24,11 @@ import { useRpcErrorToast } from "@/ui/Toast";
 export default function UsageScreen() {
   const str = useStr();
   const rpcErrorToast = useRpcErrorToast();
-  const { myState, plans, locale, refresh, refreshPlans } = useAppState();
+  const { myState, plans, locale, session, refresh, refreshPlans } = useAppState();
   const extraRoll = useConfig("extra_roll");
 
   const [history, setHistory] = useState<HistoryRequestRow[] | null>(null);
+  const [historyError, setHistoryError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
   const [acceptBusy, setAcceptBusy] = useState(false);
@@ -37,15 +38,26 @@ export default function UsageScreen() {
   const sub = myState?.subscription ?? null;
   const residency = myState?.residency ?? null;
 
+  const uid = session?.user.id ?? null;
+
   const load = useCallback(async () => {
+    if (!uid) return;
+    // resident_id filter: dual-role users must not see requests they
+    // collected as a courier in their own history (RLS ORs both policies)
     const { data, error } = await supabase
       .from("requests")
       .select("id,status,units_requested,units_final,created_at")
+      .eq("resident_id", uid)
       .order("created_at", { ascending: false })
       .limit(50);
-    if (!error && data) setHistory(data as HistoryRequestRow[]);
+    if (!error && data) {
+      setHistory(data as HistoryRequestRow[]);
+      setHistoryError(false);
+    } else if (error) {
+      setHistoryError(true);
+    }
     void refreshPlans();
-  }, [refreshPlans]);
+  }, [refreshPlans, uid]);
 
   useFocusEffect(
     useCallback(() => {
@@ -162,7 +174,13 @@ export default function UsageScreen() {
               })}
             </AppText>
             {(myState?.credits_available ?? 0) > 0 ? (
-              <AppText weight="bold" size={12.5} color={colors.greenDeep}>
+              // LTR isolation keeps the '+N' badge from bidi-flipping
+              <AppText
+                weight="bold"
+                size={12.5}
+                color={colors.greenDeep}
+                style={{ writingDirection: "ltr" }}
+              >
                 {str("home.credits_left", { units: myState?.credits_available ?? 0 })}
               </AppText>
             ) : null}
@@ -280,7 +298,13 @@ export default function UsageScreen() {
             {str("usage.history")}
           </AppText>
           {history === null ? (
-            <SkeletonList rows={3} height={58} />
+            <QueryState
+              loading={!historyError}
+              error={historyError}
+              onRetry={() => void load()}
+              rows={3}
+              rowHeight={58}
+            />
           ) : (
             history.map((row) => {
               const kind = pillKindForStatus(row.status);

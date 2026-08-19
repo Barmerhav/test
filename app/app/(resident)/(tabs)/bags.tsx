@@ -8,8 +8,8 @@ import type { BagRollRow } from "@/lib/types";
 import { useAppState, useConfig, useStr } from "@/state/AppState";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
+import { QueryState } from "@/ui/QueryState";
 import { Screen } from "@/ui/Screen";
-import { SkeletonList } from "@/ui/Skeleton";
 import { colors, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
 
@@ -21,6 +21,7 @@ export default function BagsScreen() {
   const { myState, refresh } = useAppState();
   const unitRules = useConfig("unit_rules");
   const [rolls, setRolls] = useState<BagRollRow[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
@@ -28,7 +29,12 @@ export default function BagsScreen() {
       .from("bag_rolls")
       .select("*")
       .order("ordered_at", { ascending: false });
-    if (!error && data) setRolls(data as BagRollRow[]);
+    if (!error && data) {
+      setRolls(data as BagRollRow[]);
+      setLoadError(false);
+    } else if (error) {
+      setLoadError(true);
+    }
   }, []);
 
   useFocusEffect(
@@ -70,7 +76,13 @@ export default function BagsScreen() {
       <View style={{ gap: spacing.lg }}>
         {/* roll status */}
         {rolls === null ? (
-          <SkeletonList rows={1} height={92} />
+          <QueryState
+            loading={!loadError}
+            error={loadError}
+            onRetry={() => void load()}
+            rows={1}
+            rowHeight={92}
+          />
         ) : (
           <Card big style={{ gap: spacing.sm }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>

@@ -27,10 +27,12 @@ export const MAPS_AVAILABLE = maps !== null;
 export interface FeedMapProps {
   rows: FeedRow[];
   userCoords: { lat: number; lng: number } | null;
+  /** a claim is in flight — freeze all pins */
+  disabled?: boolean;
   onPressRow: (row: FeedRow) => void;
 }
 
-export function FeedMap({ rows, userCoords, onPressRow }: FeedMapProps) {
+export function FeedMap({ rows, userCoords, disabled, onPressRow }: FeedMapProps) {
   if (!maps) return null;
   const MapView = maps.default;
   const Marker = maps.Marker;
@@ -57,12 +59,16 @@ export function FeedMap({ rows, userCoords, onPressRow }: FeedMapProps) {
           <Marker
             key={row.request_id}
             coordinate={{ latitude: row.lat as number, longitude: row.lng as number }}
-            onPress={() => onPressRow(row)}
+            onPress={() => {
+              if (!disabled) onPressRow(row);
+            }}
             tracksViewChanges={false}
           >
             <Pressy
+              disabled={disabled}
               onPress={() => onPressRow(row)}
               style={{
+                opacity: disabled ? 0.6 : 1,
                 backgroundColor: pc.green,
                 borderRadius: 11,
                 paddingHorizontal: 11,

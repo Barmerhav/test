@@ -8,8 +8,9 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { routeForState } from "@/lib/routing";
 import { rpc } from "@/lib/supabase";
-import type { TaxStatus } from "@/lib/types";
+import type { MyStateUser, TaxStatus } from "@/lib/types";
 import { useAppState, useConfig, useStr } from "@/state/AppState";
 import { PButton, PCard, PChip, PField, PScreen } from "@/ui/PickerUI";
 import { fireHaptic, Pressy } from "@/ui/Pressy";
@@ -63,9 +64,10 @@ export default function PickerOnboarding() {
   const str = useStr();
   const router = useRouter();
   const rpcErrorToast = useRpcErrorToast();
-  const { refresh } = useAppState();
+  const { refresh, patchUser } = useAppState();
   const { width } = useWindowDimensions();
   const unitRules = useConfig("unit_rules");
+  const [escaping, setEscaping] = useState(false);
 
   const [step, setStep] = useState<Step>("identity");
   const [idNumber, setIdNumber] = useState("");
@@ -107,6 +109,23 @@ export default function PickerOnboarding() {
     (taxStatus !== "murshe" || vatId.trim().length > 0);
   const bankOk =
     bank.trim().length > 0 && branch.trim().length > 0 && account.trim().length > 0;
+
+  /** Escape hatch on every step — tapping "picker" by mistake must never trap. */
+  const backToResident = async () => {
+    setEscaping(true);
+    try {
+      const user = await rpc<MyStateUser>("update_profile", {
+        p_default_mode: "resident",
+      });
+      patchUser(user);
+      const st = await refresh();
+      if (st) router.replace(routeForState(st).href);
+    } catch (err) {
+      rpcErrorToast(err);
+    } finally {
+      setEscaping(false);
+    }
+  };
 
   const submit = async () => {
     if (!taxStatus) return;
@@ -415,6 +434,23 @@ export default function PickerOnboarding() {
             />
           </View>
         ) : null}
+
+        {/* quiet exit on every step — never trap a mistaken mode choice */}
+        <Pressy
+          accessibilityRole="button"
+          onPress={() => void backToResident()}
+          disabled={escaping || saving}
+          style={{
+            minHeight: 48,
+            alignItems: "center",
+            justifyContent: "center",
+            marginTop: spacing.lg,
+          }}
+        >
+          <AppText weight="semibold" size={13} color={pc.faint}>
+            {str("settings.switch_mode_resident")}
+          </AppText>
+        </Pressy>
       </PScreen>
     </KeyboardAvoidingView>
   );

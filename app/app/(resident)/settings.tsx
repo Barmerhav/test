@@ -187,6 +187,7 @@ export default function SettingsScreen() {
           accessibilityRole="button"
           onPress={() => router.back()}
           haptic="light"
+          hitSlop={8}
           style={{
             width: 38,
             height: 38,
@@ -283,6 +284,7 @@ export default function SettingsScreen() {
                     accessibilityRole="button"
                     onPress={() => void shareReferral()}
                     haptic="light"
+                    hitSlop={8}
                     style={{
                       minHeight: 34,
                       borderRadius: radii.pill,
