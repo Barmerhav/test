@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import React, {
   createContext,
   useCallback,
@@ -24,14 +25,22 @@ const ToastContext = createContext<ToastValue | null>(null);
 const kindColor: Record<Kind, string> = {
   info: colors.ink,
   error: colors.danger,
-  success: colors.success,
+  success: colors.greenDeep,
 };
 
+const kindIcon: Record<Kind, "information-circle" | "alert-circle" | "checkmark-circle"> = {
+  info: "information-circle",
+  error: "alert-circle",
+  success: "checkmark-circle",
+};
+
+/** Top pill toast with icon; auto-dismisses after 3.5s. */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
   const [message, setMessage] = useState<string | null>(null);
   const [kind, setKind] = useState<Kind>("info");
   const opacity = useRef(new Animated.Value(0)).current;
+  const translate = useRef(new Animated.Value(-12)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const show = useCallback(
@@ -39,14 +48,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       setMessage(msg);
       setKind(k);
       if (hideTimer.current) clearTimeout(hideTimer.current);
-      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+      Animated.parallel([
+        Animated.timing(opacity, { toValue: 1, duration: 160, useNativeDriver: true }),
+        Animated.spring(translate, { toValue: 0, useNativeDriver: true, speed: 30 }),
+      ]).start();
       hideTimer.current = setTimeout(() => {
-        Animated.timing(opacity, { toValue: 0, duration: 240, useNativeDriver: true }).start(
-          () => setMessage(null),
-        );
+        Animated.parallel([
+          Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }),
+          Animated.timing(translate, { toValue: -12, duration: 220, useNativeDriver: true }),
+        ]).start(() => setMessage(null));
       }, 3500);
     },
-    [opacity],
+    [opacity, translate],
   );
 
   const value = useMemo(() => ({ show }), [show]);
@@ -61,22 +74,34 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             style={{
               position: "absolute",
               top: insets.top + spacing.sm,
-              start: spacing.md,
-              end: spacing.md,
+              start: spacing.lg,
+              end: spacing.lg,
               opacity,
-              backgroundColor: colors.card,
-              borderRadius: radii.chip,
-              borderWidth: 1,
-              borderColor: colors.line,
-              borderStartWidth: 4,
-              borderStartColor: kindColor[kind],
-              padding: spacing.md,
-              ...shadow,
+              transform: [{ translateY: translate }],
+              alignItems: "center",
             }}
           >
-            <AppText weight="medium" size={15}>
-              {message}
-            </AppText>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: spacing.xs,
+                backgroundColor: colors.card,
+                borderRadius: radii.pill,
+                borderWidth: 1,
+                borderColor: colors.lineSoft,
+                paddingVertical: 10,
+                paddingHorizontal: spacing.md,
+                maxWidth: "100%",
+                ...shadow,
+                shadowOpacity: 0.12,
+              }}
+            >
+              <Ionicons name={kindIcon[kind]} size={18} color={kindColor[kind]} />
+              <AppText weight="bold" size={13.5} style={{ flexShrink: 1 }}>
+                {message}
+              </AppText>
+            </View>
           </Animated.View>
         ) : null}
       </View>

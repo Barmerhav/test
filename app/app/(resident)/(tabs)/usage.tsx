@@ -1,81 +1,65 @@
 import { useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
-import { formatILS, shekelsToAgorot, type RequestStatus } from "@pinui/shared";
+import { formatILS, shekelsToAgorot } from "@pinui/shared";
 import { AllowanceRing } from "@/components/AllowanceRing";
 import { perUnitAgorot } from "@/components/UpgradeSheet";
-import { formatDate } from "@/lib/dates";
+import { formatDateIntl, formatMonthName } from "@/lib/dates";
 import { chargeExtraRoll } from "@/lib/payments";
 import { rpc, supabase } from "@/lib/supabase";
 import type { HistoryRequestRow, PlanRow } from "@/lib/types";
 import { useAppState, useConfig, useStr } from "@/state/AppState";
 import { Button, ConfirmButton } from "@/ui/Button";
 import { Card } from "@/ui/Card";
+import { fireHaptic } from "@/ui/Pressy";
 import { Screen } from "@/ui/Screen";
+import { SkeletonList } from "@/ui/Skeleton";
+import { pillKindForStatus, StatusPill } from "@/ui/StatusPill";
 import { colors, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
 import { useRpcErrorToast } from "@/ui/Toast";
 
-/** Reuse existing strings keys as short history labels per status. */
-const STATUS_LABEL_KEY: Record<RequestStatus, string> = {
-  submitted: "request.waiting",
-  open: "request.waiting",
-  claimed: "request.claimed",
-  resident_approval: "request.claimed",
-  put_out_prompt: "request.put_out_prompt",
-  collected: "request.collected",
-  verified: "request.collected",
-  paid: "request.done_title",
-  expired: "request.expired_title",
-  declined_leak: "request.declined_leak",
-  noshow: "request.expired_title",
-  canceled: "request.cancel",
-};
-
-const STATUS_COLOR: Partial<Record<RequestStatus, string>> = {
-  paid: colors.success,
-  collected: colors.success,
-  verified: colors.success,
-  expired: colors.danger,
-  declined_leak: colors.danger,
-  noshow: colors.danger,
-  canceled: colors.muted,
-};
-
+/** Usage per artboard 06: quota header, resets line, upgrade compare,
+ * month history with status pills, extra-roll card. */
 export default function UsageScreen() {
   const str = useStr();
   const rpcErrorToast = useRpcErrorToast();
-  const { myState, plans, refresh, refreshPlans } = useAppState();
+  const { myState, plans, locale, refresh, refreshPlans } = useAppState();
   const extraRoll = useConfig("extra_roll");
 
-  const [history, setHistory] = useState<HistoryRequestRow[]>([]);
+  const [history, setHistory] = useState<HistoryRequestRow[] | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
   const [acceptBusy, setAcceptBusy] = useState(false);
   const [rollBusy, setRollBusy] = useState(false);
   const [rollDone, setRollDone] = useState(false);
 
   const sub = myState?.subscription ?? null;
+  const residency = myState?.residency ?? null;
+
+  const load = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("requests")
+      .select("id,status,units_requested,units_final,created_at")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (!error && data) setHistory(data as HistoryRequestRow[]);
+    void refreshPlans();
+  }, [refreshPlans]);
 
   useFocusEffect(
     useCallback(() => {
-      let alive = true;
-      const load = async () => {
-        const { data, error } = await supabase
-          .from("requests")
-          .select("id,status,units_requested,units_final,created_at")
-          .order("created_at", { ascending: false })
-          .limit(50);
-        if (alive && !error && data) setHistory(data as HistoryRequestRow[]);
-        void refreshPlans();
-      };
       void load();
-      return () => {
-        alive = false;
-      };
-    }, [refreshPlans]),
+    }, [load]),
   );
 
-  /** Founder repriced the plan: a newer active version of the same code. */
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([load(), refresh()]);
+    setRefreshing(false);
+  };
+
+  /** Founder repriced this plan code → newer active version awaits accept. */
   const pendingPlanChange: PlanRow | null = useMemo(() => {
     if (!sub) return null;
     return (
@@ -117,6 +101,7 @@ export default function UsageScreen() {
     try {
       await rpc("change_plan", { p_plan_id: plan.id });
       await refresh();
+      void fireHaptic("success");
     } catch (err) {
       rpcErrorToast(err);
     } finally {
@@ -130,9 +115,10 @@ export default function UsageScreen() {
     try {
       await chargeExtraRoll(sub.bag_format);
       setRollDone(true);
+      void fireHaptic("success");
       void refresh();
     } catch (err) {
-      // graceful when the payments function isn't deployed yet
+      // graceful when the payments function is unreachable
       rpcErrorToast(err);
     } finally {
       setRollBusy(false);
@@ -143,48 +129,57 @@ export default function UsageScreen() {
     return <Screen title={str("usage.title")}>{null}</Screen>;
   }
 
+  const remaining = Math.max(0, sub.units_included - sub.units_used);
+  const street = residency ? `${residency.street} ${residency.house_number}` : "";
+
   return (
-    <Screen title={str("usage.title")}>
+    <Screen
+      title={str("usage.title")}
+      subtitle={formatMonthName(locale)}
+      refreshing={refreshing}
+      onRefresh={() => void onRefresh()}
+    >
       <View style={{ gap: spacing.lg }}>
-        {/* plan + ring */}
-        <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg }}>
+        {/* quota header */}
+        <Card big style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg }}>
           <AllowanceRing
             included={sub.units_included}
             used={sub.units_used}
             credits={myState?.credits_available ?? 0}
-            size={120}
+            size={118}
             strokeWidth={11}
+            compact
           />
           <View style={{ flex: 1, gap: spacing.xs }}>
-            <AppText weight="bold" size={20}>
-              {str(`plan.${sub.plan.code}.name`)}
+            <AppText weight="heavy" size={18}>
+              {remaining === 1
+                ? str("usage.left_single")
+                : str("usage.left_many", { units: remaining })}
             </AppText>
-            <View style={{ flexDirection: "row", alignItems: "baseline", gap: spacing.xs }}>
-              <MonoText bold size={22}>
-                {formatILS(sub.plan.price_agorot)}
-              </MonoText>
-              <AppText size={13} color={colors.muted}>
-                {str("plan.per_month")}
+            <AppText size={12.5} color={colors.text2} style={{ lineHeight: 19 }}>
+              {str("usage.resets_at", {
+                date: formatDateIntl(sub.next_reset_at, locale),
+              })}
+            </AppText>
+            {(myState?.credits_available ?? 0) > 0 ? (
+              <AppText weight="bold" size={12.5} color={colors.greenDeep}>
+                {str("home.credits_left", { units: myState?.credits_available ?? 0 })}
               </AppText>
-            </View>
-            <MonoText size={14} color={colors.muted}>
-              {formatDate(sub.next_reset_at)}
-            </MonoText>
+            ) : null}
           </View>
         </Card>
 
-        {/* founder repriced this plan → accept the new version */}
+        {/* founder repriced this plan → accept */}
         {pendingPlanChange ? (
           <Card accent style={{ gap: spacing.sm }}>
-            <AppText weight="bold" size={16}>
-              {/* NOTE: 'plan.change_title' not seeded yet — shows '!key' until added */}
+            <AppText weight="heavy" size={15.5}>
               {str("plan.change_title")}
             </AppText>
             <View style={{ flexDirection: "row", alignItems: "baseline", gap: spacing.xs }}>
-              <MonoText bold size={20}>
+              <MonoText weight="heavy" size={20}>
                 {formatILS(pendingPlanChange.price_agorot)}
               </MonoText>
-              <AppText size={13} color={colors.muted}>
+              <AppText size={12.5} color={colors.muted}>
                 {str("plan.per_month")}
               </AppText>
             </View>
@@ -197,11 +192,11 @@ export default function UsageScreen() {
           </Card>
         ) : null}
 
-        {/* one-tap upgrades with live per-unit compare */}
+        {/* upgrade with live per-bag compare */}
         {upgradeCandidates.length > 0 ? (
           <View style={{ gap: spacing.sm }}>
-            <AppText weight="bold" size={17}>
-              {str("plan.upgrade_title")}
+            <AppText weight="heavy" size={16}>
+              {str("plan.upgrade_body")}
             </AppText>
             {upgradeCandidates.map((plan) => (
               <Card key={plan.id} style={{ gap: spacing.sm }}>
@@ -212,12 +207,17 @@ export default function UsageScreen() {
                     justifyContent: "space-between",
                   }}
                 >
-                  <AppText weight="bold" size={16}>
+                  <AppText weight="heavy" size={15.5}>
                     {str(plan.name_strings_key)}
                   </AppText>
-                  <MonoText bold size={18}>
-                    {formatILS(plan.price_agorot)}
-                  </MonoText>
+                  <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+                    <MonoText weight="heavy" size={17}>
+                      {formatILS(plan.price_agorot)}
+                    </MonoText>
+                    <AppText size={11.5} color={colors.muted}>
+                      {str("plan.per_month")}
+                    </AppText>
+                  </View>
                 </View>
                 <View
                   style={{
@@ -226,14 +226,22 @@ export default function UsageScreen() {
                     justifyContent: "space-between",
                   }}
                 >
-                  <AppText size={13} color={colors.muted}>
+                  <AppText size={12.5} color={colors.muted}>
                     {str("plan.units_included", { units: plan.units_per_month })}
                   </AppText>
-                  <AppText size={13} color={colors.success}>
-                    {str("plan.price_per_unit", {
-                      price: formatILS(perUnitAgorot(plan)),
-                    })}
-                  </AppText>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                    <MonoText size={12} color={colors.faint}>
+                      {formatILS(perUnitAgorot(sub.plan))}
+                    </MonoText>
+                    <AppText size={12} color={colors.faint}>
+                      ←
+                    </AppText>
+                    <AppText weight="bold" size={12.5} color={colors.greenDeep}>
+                      {str("plan.price_per_unit", {
+                        price: formatILS(perUnitAgorot(plan)),
+                      })}
+                    </AppText>
+                  </View>
                 </View>
                 <ConfirmButton
                   label={str("plan.upgrade_cta")}
@@ -248,7 +256,7 @@ export default function UsageScreen() {
 
         {/* extra bag roll (config-gated) */}
         {extraRoll.enabled ? (
-          <Card style={{ gap: spacing.sm }}>
+          <Card style={{ gap: spacing.xs }}>
             <Button
               label={str("usage.order_roll", {
                 price: formatILS(shekelsToAgorot(extraRoll.price)),
@@ -259,47 +267,49 @@ export default function UsageScreen() {
               kind="ghost"
               compact
             />
+            <AppText size={11.5} color={colors.muted} center>
+              {str("usage.order_roll_note")}
+            </AppText>
           </Card>
         ) : null}
 
-        {/* history */}
+        {/* month history (section hidden until there's something to show) */}
+        {history === null || history.length > 0 ? (
         <View style={{ gap: spacing.sm }}>
-          <AppText weight="bold" size={17}>
+          <AppText weight="heavy" size={16}>
             {str("usage.history")}
           </AppText>
-          {history.map((row) => (
-            <Card key={row.id} padded style={{ paddingVertical: spacing.sm }}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.sm,
-                }}
-              >
-                <View
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    backgroundColor: STATUS_COLOR[row.status] ?? colors.accent,
-                  }}
-                />
-                <AppText
-                  weight="medium"
-                  size={14}
-                  numberOfLines={1}
-                  style={{ flex: 1 }}
-                >
-                  {str(STATUS_LABEL_KEY[row.status] ?? "request.waiting")}
-                </AppText>
-                <MonoText size={14}>{row.units_final ?? row.units_requested}</MonoText>
-                <MonoText size={13} color={colors.muted}>
-                  {formatDate(row.created_at)}
-                </MonoText>
-              </View>
-            </Card>
-          ))}
+          {history === null ? (
+            <SkeletonList rows={3} height={58} />
+          ) : (
+            history.map((row) => {
+              const kind = pillKindForStatus(row.status);
+              return (
+                <Card key={row.id} padded style={{ paddingVertical: 12 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: spacing.sm,
+                    }}
+                  >
+                    <MonoText weight="bold" size={12.5} color={colors.muted}>
+                      {formatDateIntl(row.created_at, locale)}
+                    </MonoText>
+                    <AppText size={13.5} numberOfLines={1} style={{ flex: 1 }}>
+                      {str("usage.history_line", {
+                        units: row.units_final ?? row.units_requested,
+                        street,
+                      })}
+                    </AppText>
+                    {kind ? <StatusPill kind={kind} /> : null}
+                  </View>
+                </Card>
+              );
+            })
+          )}
         </View>
+        ) : null}
       </View>
     </Screen>
   );

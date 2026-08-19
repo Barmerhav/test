@@ -1,39 +1,55 @@
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { Pressable, type StyleProp, type ViewStyle } from "react-native";
-import { colors, radii, TAP, spacing } from "./theme";
+import { type StyleProp, type ViewStyle } from "react-native";
+import { Pressy } from "./Pressy";
 import { AppText } from "./Text";
+import { colors, radii, spacing, TAP } from "./theme";
 
 export interface ChipProps {
   label: string;
   selected?: boolean;
   onPress: () => void;
   style?: StyleProp<ViewStyle>;
+  /** selected style: green fill with a check (design: TTL chips) */
+  check?: boolean;
 }
 
-export function Chip({ label, selected, onPress, style }: ChipProps) {
+export function Chip({ label, selected, onPress, style, check }: ChipProps) {
+  const selBg = check ? colors.green : colors.ink;
+  const selFg = check ? colors.onGreen : colors.card;
   return (
-    <Pressable
+    <Pressy
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [
+      haptic="light"
+      style={[
         {
           minHeight: TAP,
-          borderRadius: radii.chip,
+          borderRadius: radii.pill,
           paddingHorizontal: spacing.md,
           paddingVertical: spacing.sm,
+          flexDirection: "row",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: selected ? colors.ink : colors.card,
-          borderWidth: 1,
-          borderColor: selected ? colors.ink : colors.line,
-          opacity: pressed ? 0.85 : 1,
+          gap: 6,
+          backgroundColor: selected ? selBg : colors.card,
+          borderWidth: 1.5,
+          borderColor: selected ? selBg : colors.line,
         },
         style,
       ]}
     >
-      <AppText weight={selected ? "bold" : "medium"} size={15} color={selected ? colors.card : colors.ink}>
+      <AppText
+        weight="bold"
+        size={13.5}
+        color={selected ? selFg : colors.text2}
+        center
+      >
         {label}
       </AppText>
-    </Pressable>
+      {check && selected ? (
+        <Ionicons name="checkmark" size={15} color={selFg} />
+      ) : null}
+    </Pressy>
   );
 }

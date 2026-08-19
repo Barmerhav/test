@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import React, { useMemo, useRef, useState } from "react";
+import { View } from "react-native";
 import { rpcErrorCode } from "@pinui/shared";
 import { UpgradeSheet } from "@/components/UpgradeSheet";
 import { defaultTtlKey, visibleTtlOptions } from "@/lib/ttl";
@@ -10,6 +10,7 @@ import type { RequestRow } from "@/lib/types";
 import { useAppState, useConfig, useStr } from "@/state/AppState";
 import { Button } from "@/ui/Button";
 import { Chip } from "@/ui/Chip";
+import { fireHaptic, Pressy } from "@/ui/Pressy";
 import { Screen } from "@/ui/Screen";
 import { colors, radii, spacing, TAP } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
@@ -25,25 +26,27 @@ function StepperButton({
   disabled?: boolean;
 }) {
   return (
-    <Pressable
+    <Pressy
       accessibilityRole="button"
       onPress={onPress}
       disabled={disabled}
-      style={({ pressed }) => ({
-        width: TAP + 8,
-        height: TAP + 8,
-        borderRadius: (TAP + 8) / 2,
-        backgroundColor: disabled ? colors.line : colors.ink,
+      haptic="light"
+      style={{
+        width: TAP + 4,
+        height: TAP + 4,
+        borderRadius: (TAP + 4) / 2,
+        backgroundColor: disabled ? colors.surface : colors.ink,
         alignItems: "center",
         justifyContent: "center",
-        opacity: pressed ? 0.85 : 1,
-      })}
+      }}
     >
-      <Ionicons name={icon} size={26} color={disabled ? colors.muted : colors.card} />
-    </Pressable>
+      <Ionicons name={icon} size={24} color={disabled ? colors.faint : colors.card} />
+    </Pressy>
   );
 }
 
+/** Submit sheet per artboard 04: title + subtitle, TTL chips (green ✓ fill),
+ * bag stepper, hero CTA that flips into the success state. */
 export default function SubmitSheet() {
   const str = useStr();
   const router = useRouter();
@@ -57,7 +60,9 @@ export default function SubmitSheet() {
   const maxUnits = unitRules.max_units_per_request;
   const [units, setUnits] = useState(1);
   const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const visible = useMemo(
     () => visibleTtlOptions(ttlConfig.options, timezone),
@@ -71,7 +76,7 @@ export default function SubmitSheet() {
     : defaultTtlKey(visible, ttlConfig.default);
 
   const submit = async () => {
-    if (!selectedTtl) return;
+    if (!selectedTtl || done) return;
     setSubmitting(true);
     try {
       const row = await rpc<RequestRow>("submit_request", {
@@ -80,7 +85,9 @@ export default function SubmitSheet() {
       });
       setActiveRequest(row);
       void refresh();
-      router.back();
+      void fireHaptic("success");
+      setDone(true);
+      closeTimer.current = setTimeout(() => router.back(), 1100);
     } catch (err) {
       if (rpcErrorCode(err) === "insufficient_allowance") {
         setShowUpgrade(true);
@@ -92,12 +99,39 @@ export default function SubmitSheet() {
     }
   };
 
+  React.useEffect(
+    () => () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    },
+    [],
+  );
+
   return (
-    <Screen title={str("submit.title")}>
+    <Screen>
+      {/* grabber (modal sheet feel) */}
+      <View
+        style={{
+          alignSelf: "center",
+          width: 40,
+          height: 5,
+          borderRadius: 99,
+          backgroundColor: colors.line,
+          marginBottom: spacing.lg,
+        }}
+      />
       <View style={{ gap: spacing.xl }}>
-        {/* unit stepper */}
+        <View style={{ gap: 5 }}>
+          <AppText weight="heavy" size={23}>
+            {str("submit.title")}
+          </AppText>
+          <AppText size={14} color={colors.text2} style={{ lineHeight: 21 }}>
+            {str("submit.subtitle")}
+          </AppText>
+        </View>
+
+        {/* bag count stepper */}
         <View style={{ gap: spacing.sm }}>
-          <AppText weight="medium" size={15}>
+          <AppText weight="bold" size={14.5}>
             {str("submit.units_label")}
           </AppText>
           <View
@@ -107,9 +141,9 @@ export default function SubmitSheet() {
               justifyContent: "center",
               gap: spacing.xl,
               backgroundColor: colors.card,
-              borderRadius: radii.card,
+              borderRadius: radii.cardBig,
               borderWidth: 1,
-              borderColor: colors.line,
+              borderColor: colors.lineSoft,
               paddingVertical: spacing.lg,
             }}
           >
@@ -118,7 +152,7 @@ export default function SubmitSheet() {
               onPress={() => setUnits((u) => Math.max(1, u - 1))}
               disabled={units <= 1}
             />
-            <MonoText bold size={44} center style={{ minWidth: 72 }}>
+            <MonoText weight="heavy" size={44} center style={{ minWidth: 72 }}>
               {units}
             </MonoText>
             <StepperButton
@@ -127,14 +161,14 @@ export default function SubmitSheet() {
               disabled={units >= maxUnits}
             />
           </View>
-          <AppText size={13} color={colors.muted} center>
+          <AppText size={12.5} color={colors.muted} center>
             {str("submit.unit_hint")}
           </AppText>
         </View>
 
-        {/* TTL chips (config-driven; past-cutoff options hidden) */}
+        {/* TTL chips (config-driven; past-cutoff hidden; green ✓ selected) */}
         <View style={{ gap: spacing.sm }}>
-          <AppText weight="medium" size={15}>
+          <AppText weight="bold" size={14.5}>
             {str("submit.deadline_label")}
           </AppText>
           <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
@@ -144,18 +178,27 @@ export default function SubmitSheet() {
                 label={str(`ttl.${opt.key}`)}
                 selected={selectedTtl === opt.key}
                 onPress={() => setTtlKey(opt.key)}
+                check
                 style={{ flexGrow: 1 }}
               />
             ))}
           </View>
         </View>
 
-        <Button
-          label={str("submit.cta")}
-          onPress={() => void submit()}
-          disabled={!selectedTtl}
-          loading={submitting}
-        />
+        <View style={{ gap: spacing.sm }}>
+          <Button
+            label={done ? str("submit.success") : str("submit.cta")}
+            kind={done ? "success" : "primary"}
+            onPress={() => void submit()}
+            disabled={!selectedTtl}
+            loading={submitting}
+            big
+            haptic="medium"
+          />
+          <AppText size={11.5} color={colors.muted} center>
+            {str("submit.cancel_hint")}
+          </AppText>
+        </View>
       </View>
 
       <UpgradeSheet
@@ -163,7 +206,7 @@ export default function SubmitSheet() {
         onClose={() => setShowUpgrade(false)}
         onUpgraded={() => {
           setShowUpgrade(false);
-          // allowance just grew — retry the submit immediately
+          // allowance just grew — retry immediately
           void submit();
         }}
       />

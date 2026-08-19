@@ -38,7 +38,7 @@ export default function PickerPending() {
   return (
     <PScreen scroll={false} contentStyle={{ justifyContent: "center" }}>
       <View style={{ alignItems: "center", gap: spacing.lg }}>
-        <Ionicons name="hourglass-outline" size={64} color={pc.amber} />
+        <Ionicons name="hourglass-outline" size={64} color={pc.money} />
         <AppText weight="medium" size={17} color={pc.text} center>
           {str("picker.pending_verification")}
         </AppText>

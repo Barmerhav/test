@@ -8,10 +8,11 @@ type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 function tabIcon(focused: IconName, unfocused: IconName) {
   return function TabIcon({ color, focused: isFocused }: { color: string; focused: boolean }) {
-    return <Ionicons name={isFocused ? focused : unfocused} size={24} color={color} />;
+    return <Ionicons name={isFocused ? focused : unfocused} size={22} color={color} />;
   };
 }
 
+/** Resident tabs per the design: בית / שימוש / שקיות / הזמינו. */
 export default function ResidentTabs() {
   const str = useStr();
   return (
@@ -20,45 +21,45 @@ export default function ResidentTabs() {
         headerShown: false,
         sceneStyle: { backgroundColor: colors.bg },
         tabBarActiveTintColor: colors.ink,
-        tabBarInactiveTintColor: colors.muted,
+        tabBarInactiveTintColor: colors.faint,
         tabBarStyle: {
           backgroundColor: colors.card,
-          borderTopColor: colors.line,
+          borderTopColor: colors.lineAlt,
           height: 64,
           paddingTop: 6,
         },
         tabBarLabelStyle: {
-          fontFamily: fonts.medium,
-          fontSize: 12,
+          fontFamily: fonts.bold,
+          fontSize: 11,
         },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: str("app_name"),
+          title: str("home.tab"),
           tabBarIcon: tabIcon("home", "home-outline"),
         }}
       />
       <Tabs.Screen
         name="usage"
         options={{
-          title: str("usage.title"),
-          tabBarIcon: tabIcon("stats-chart", "stats-chart-outline"),
+          title: str("usage.tab"),
+          tabBarIcon: tabIcon("pie-chart", "pie-chart-outline"),
         }}
       />
       <Tabs.Screen
         name="bags"
         options={{
-          title: str("bags.title"),
+          title: str("bags.tab"),
           tabBarIcon: tabIcon("bag-handle", "bag-handle-outline"),
         }}
       />
       <Tabs.Screen
-        name="settings"
+        name="invite"
         options={{
-          title: str("settings.title"),
-          tabBarIcon: tabIcon("settings", "settings-outline"),
+          title: str("invite.tab"),
+          tabBarIcon: tabIcon("add-circle", "add-circle-outline"),
         }}
       />
     </Tabs>

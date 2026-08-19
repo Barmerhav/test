@@ -3,15 +3,17 @@ import { Tabs } from "expo-router";
 import React from "react";
 import { useStr } from "@/state/AppState";
 import { fonts, pickerColors as pc } from "@/ui/theme";
+import { MonoText } from "@/ui/Text";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 function tabIcon(focused: IconName, unfocused: IconName) {
   return function TabIcon({ color, focused: isFocused }: { color: string; focused: boolean }) {
-    return <Ionicons name={isFocused ? focused : unfocused} size={24} color={color} />;
+    return <Ionicons name={isFocused ? focused : unfocused} size={22} color={color} />;
   };
 }
 
+/** Picker tabs per the design: בקשות / רווחים / פרופיל (₪ glyph for earnings). */
 export default function PickerTabs() {
   const str = useStr();
   return (
@@ -19,46 +21,43 @@ export default function PickerTabs() {
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: pc.bg },
-        tabBarActiveTintColor: pc.amber,
-        tabBarInactiveTintColor: pc.muted,
+        tabBarActiveTintColor: pc.text,
+        tabBarInactiveTintColor: pc.faint,
         tabBarStyle: {
-          backgroundColor: pc.surface,
-          borderTopColor: pc.line,
+          backgroundColor: pc.deep,
+          borderTopColor: pc.tabBorder,
           height: 64,
           paddingTop: 6,
         },
         tabBarLabelStyle: {
-          fontFamily: fonts.medium,
-          fontSize: 12,
+          fontFamily: fonts.bold,
+          fontSize: 11,
         },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: str("feed.title"),
-          tabBarIcon: tabIcon("flash", "flash-outline"),
-        }}
-      />
-      <Tabs.Screen
-        name="stop"
-        options={{
-          title: str("stop.title"),
-          tabBarIcon: tabIcon("navigate", "navigate-outline"),
+          title: str("feed.tab"),
+          tabBarIcon: tabIcon("list", "list-outline"),
         }}
       />
       <Tabs.Screen
         name="earnings"
         options={{
-          title: str("earnings.title"),
-          tabBarIcon: tabIcon("cash", "cash-outline"),
+          title: str("earnings.tab"),
+          tabBarIcon: ({ color }: { color: string }) => (
+            <MonoText weight="heavy" size={17} color={color}>
+              ₪
+            </MonoText>
+          ),
         }}
       />
       <Tabs.Screen
-        name="settings"
+        name="profile"
         options={{
-          title: str("settings.title"),
-          tabBarIcon: tabIcon("settings", "settings-outline"),
+          title: str("profile.tab"),
+          tabBarIcon: tabIcon("person", "person-outline"),
         }}
       />
     </Tabs>

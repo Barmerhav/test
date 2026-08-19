@@ -4,20 +4,22 @@ import React, { useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   useWindowDimensions,
   View,
 } from "react-native";
 import { rpc } from "@/lib/supabase";
 import type { TaxStatus } from "@/lib/types";
-import { useAppState, useStr } from "@/state/AppState";
+import { useAppState, useConfig, useStr } from "@/state/AppState";
 import { PButton, PCard, PChip, PField, PScreen } from "@/ui/PickerUI";
+import { fireHaptic, Pressy } from "@/ui/Pressy";
 import { pickerColors as pc, radii, spacing } from "@/ui/theme";
-import { AppText } from "@/ui/Text";
+import { AppText, MonoText } from "@/ui/Text";
 import { useRpcErrorToast } from "@/ui/Toast";
 
 type Step = "identity" | "tax" | "bank" | "training";
+
+const STEPS: Step[] = ["identity", "tax", "bank", "training"];
 
 const BIRTHDATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -30,19 +32,40 @@ function isAtLeast18(birthdate: string): boolean {
   return d.getTime() <= cutoff.getTime();
 }
 
-const TRAINING_RULES = [
-  { key: "training.rule1", icon: "bag-check-outline" },
-  { key: "training.rule2", icon: "barbell-outline" },
-  { key: "training.rule3", icon: "water-outline" },
-  { key: "training.rule4", icon: "qr-code-outline" },
-] as const;
+function ProgressDots({ step }: { step: Step }) {
+  const idx = STEPS.indexOf(step);
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        gap: 6,
+        justifyContent: "center",
+        marginBottom: spacing.lg,
+      }}
+    >
+      {STEPS.map((s, i) => (
+        <View
+          key={s}
+          style={{
+            width: i === idx ? 22 : 7,
+            height: 7,
+            borderRadius: 99,
+            backgroundColor: i <= idx ? pc.green : pc.chip,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
 
+/** Picker onboarding per artboards 09a/09b — under 3 minutes, promised. */
 export default function PickerOnboarding() {
   const str = useStr();
   const router = useRouter();
   const rpcErrorToast = useRpcErrorToast();
   const { refresh } = useAppState();
   const { width } = useWindowDimensions();
+  const unitRules = useConfig("unit_rules");
 
   const [step, setStep] = useState<Step>("identity");
   const [idNumber, setIdNumber] = useState("");
@@ -58,7 +81,24 @@ export default function PickerOnboarding() {
   const [saving, setSaving] = useState(false);
   const pagerRef = useRef<ScrollView | null>(null);
 
-  const cardWidth = width - spacing.lg * 2;
+  const cardWidth = width - 18 * 2;
+
+  const trainingRules: { key: string; icon: React.ComponentProps<typeof Ionicons>["name"]; title: string; sub: string | null }[] = [
+    {
+      key: "rule1",
+      icon: "bag-check-outline",
+      title: str("training.rule1"),
+      sub: str("training.rule1_sub"),
+    },
+    {
+      key: "rule2",
+      icon: "barbell-outline",
+      title: str("training.rule2", { kg: unitRules.max_kg_per_unit }),
+      sub: null,
+    },
+    { key: "rule3", icon: "water-outline", title: str("training.rule3"), sub: null },
+    { key: "rule4", icon: "qr-code-outline", title: str("training.rule4"), sub: null },
+  ];
 
   const identityOk = idNumber.trim().length >= 5 && isAtLeast18(birthdate.trim());
   const taxOk =
@@ -84,6 +124,7 @@ export default function PickerOnboarding() {
         },
         p_vat_id: taxStatus === "murshe" ? vatId.trim() : null,
       });
+      void fireHaptic("success");
       await refresh();
       router.replace("/(picker)/pending");
     } catch (err) {
@@ -98,9 +139,28 @@ export default function PickerOnboarding() {
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <PScreen title={str("picker.onb_title")}>
+      <PScreen>
+        <ProgressDots step={step} />
+
         {step === "identity" ? (
           <View style={{ gap: spacing.lg }}>
+            <AppText weight="heavy" size={21} color={pc.text} style={{ lineHeight: 30 }}>
+              {str("picker.onb_title")}
+            </AppText>
+            {/* checklist header */}
+            <View style={{ gap: spacing.xs }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+                <AppText weight="bold" size={13.5} color={pc.money}>
+                  {str("picker.phone_verified")}
+                </AppText>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+                <Ionicons name="ellipse-outline" size={13} color={pc.muted} />
+                <AppText weight="bold" size={13.5} color={pc.muted}>
+                  {str("picker.id_step")}
+                </AppText>
+              </View>
+            </View>
             <PField
               label={str("picker.id_number")}
               value={idNumber}
@@ -119,7 +179,7 @@ export default function PickerOnboarding() {
               maxLength={10}
             />
             {birthdate.trim().length === 10 && !isAtLeast18(birthdate.trim()) ? (
-              <AppText size={14} color={pc.danger}>
+              <AppText size={13.5} color={pc.danger}>
                 {str("picker.underage")}
               </AppText>
             ) : null}
@@ -127,15 +187,21 @@ export default function PickerOnboarding() {
               label={str("common.continue")}
               onPress={() => setStep("tax")}
               disabled={!identityOk}
+              haptic="medium"
             />
           </View>
         ) : null}
 
         {step === "tax" ? (
           <View style={{ gap: spacing.lg }}>
-            <AppText weight="medium" size={15} color={pc.text}>
-              {str("picker.tax_status")}
-            </AppText>
+            <View style={{ gap: 4 }}>
+              <AppText weight="heavy" size={21} color={pc.text}>
+                {str("picker.tax_status")}
+              </AppText>
+              <AppText size={13.5} color={pc.muted}>
+                {str("picker.tax_sub")}
+              </AppText>
+            </View>
             <View style={{ flexDirection: "row", gap: spacing.sm }}>
               {(["patur", "murshe", "none"] as TaxStatus[]).map((ts) => (
                 <PChip
@@ -144,6 +210,7 @@ export default function PickerOnboarding() {
                   selected={taxStatus === ts}
                   onPress={() => setTaxStatus(ts)}
                   style={{ flex: 1 }}
+                  badge={ts === "none" ? str("picker.tax_none_hint") : undefined}
                 />
               ))}
             </View>
@@ -157,36 +224,60 @@ export default function PickerOnboarding() {
               />
             ) : null}
 
-            {/* PoA consent — must check to continue */}
-            <Pressable accessibilityRole="checkbox" onPress={() => setPoaChecked((v) => !v)}>
-              <PCard paper style={{ gap: spacing.sm }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                  <Ionicons
-                    name={poaChecked ? "checkbox" : "square-outline"}
-                    size={26}
-                    color={poaChecked ? pc.success : pc.ink}
-                  />
-                  <AppText weight="bold" size={16} color={pc.ink} style={{ flex: 1 }}>
-                    {str("picker.poa_title")}
-                  </AppText>
+            {/* PoA — we issue the invoices */}
+            <PCard style={{ gap: spacing.sm, padding: 18 }}>
+              <AppText weight="heavy" size={15.5} color={pc.text}>
+                {str("picker.poa_title")}
+              </AppText>
+              <AppText size={13} color={pc.muted} style={{ lineHeight: 19 }}>
+                {str("picker.poa_body")}
+              </AppText>
+              <Pressy
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: poaChecked }}
+                onPress={() => setPoaChecked((v) => !v)}
+                haptic="light"
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.sm,
+                  minHeight: 44,
+                }}
+              >
+                <View
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 7,
+                    borderWidth: poaChecked ? 0 : 2,
+                    borderColor: pc.lineStrong,
+                    backgroundColor: poaChecked ? pc.green : "transparent",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {poaChecked ? (
+                    <Ionicons name="checkmark" size={15} color={pc.onGreen} />
+                  ) : null}
                 </View>
-                <AppText size={14} color={pc.ink} style={{ lineHeight: 21 }}>
-                  {str("picker.poa_body")}
+                <AppText weight="bold" size={13} color={pc.text} style={{ flex: 1 }}>
+                  {str("picker.poa_consent")}
                 </AppText>
-              </PCard>
-            </Pressable>
+              </Pressy>
+            </PCard>
 
             <PButton
-              label={str("common.continue")}
+              label={str("picker.to_bank_cta")}
               onPress={() => setStep("bank")}
               disabled={!taxOk}
+              haptic="medium"
             />
           </View>
         ) : null}
 
         {step === "bank" ? (
           <View style={{ gap: spacing.lg }}>
-            <AppText weight="medium" size={15} color={pc.text}>
+            <AppText weight="heavy" size={21} color={pc.text}>
               {str("picker.bank_details")}
             </AppText>
             <PField
@@ -218,12 +309,27 @@ export default function PickerOnboarding() {
               label={str("common.continue")}
               onPress={() => setStep("training")}
               disabled={!bankOk}
+              haptic="medium"
             />
           </View>
         ) : null}
 
         {step === "training" ? (
           <View style={{ gap: spacing.lg }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "baseline",
+                justifyContent: "space-between",
+              }}
+            >
+              <AppText weight="heavy" size={21} color={pc.text}>
+                {str("training.title")}
+              </AppText>
+              <MonoText weight="heavy" size={15} color={pc.money}>
+                {`${page + 1}/${trainingRules.length}`}
+              </MonoText>
+            </View>
             <ScrollView
               ref={pagerRef}
               horizontal
@@ -231,53 +337,81 @@ export default function PickerOnboarding() {
               showsHorizontalScrollIndicator={false}
               onMomentumScrollEnd={(e) => {
                 const p = Math.min(
-                  TRAINING_RULES.length - 1,
+                  trainingRules.length - 1,
                   Math.max(0, Math.round(e.nativeEvent.contentOffset.x / cardWidth)),
                 );
                 setPage(p);
                 setMaxPageSeen((prev) => Math.max(prev, p));
               }}
-              style={{ marginStart: -spacing.lg, marginEnd: -spacing.lg }}
-              contentContainerStyle={{ paddingHorizontal: spacing.lg }}
+              style={{ marginStart: -18, marginEnd: -18 }}
+              contentContainerStyle={{ paddingHorizontal: 18 }}
             >
-              {TRAINING_RULES.map((rule) => (
-                <PCard
-                  key={rule.key}
-                  paper
-                  style={{
-                    width: cardWidth,
-                    minHeight: 260,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: spacing.lg,
-                  }}
-                >
-                  <Ionicons name={rule.icon} size={72} color={pc.ink} />
-                  <AppText weight="bold" size={20} color={pc.ink} center>
-                    {str(rule.key)}
-                  </AppText>
-                </PCard>
-              ))}
-            </ScrollView>
-            {/* page dots */}
-            <View style={{ flexDirection: "row", justifyContent: "center", gap: spacing.xs }}>
-              {TRAINING_RULES.map((rule, i) => (
+              {trainingRules.map((rule) => (
                 <View
                   key={rule.key}
                   style={{
-                    width: i === page ? 22 : 8,
-                    height: 8,
-                    borderRadius: radii.chip,
-                    backgroundColor: i === page ? pc.amber : pc.line,
+                    width: cardWidth,
+                    minHeight: 280,
+                    borderRadius: radii.cardBig,
+                    backgroundColor: pc.surface,
+                    borderWidth: 1,
+                    borderColor: pc.line,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: spacing.md,
+                    padding: spacing.lg,
                   }}
-                />
+                >
+                  <View
+                    style={{
+                      width: 96,
+                      height: 96,
+                      borderRadius: 99,
+                      backgroundColor: pc.chip,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name={rule.icon} size={46} color={pc.money} />
+                  </View>
+                  <AppText weight="heavy" size={21} color={pc.text} center>
+                    {rule.title}
+                  </AppText>
+                  {rule.sub ? (
+                    <AppText size={13.5} color={pc.muted} center style={{ lineHeight: 20 }}>
+                      {rule.sub}
+                    </AppText>
+                  ) : null}
+                </View>
               ))}
+            </ScrollView>
+            {/* dots + swipe hint */}
+            <View style={{ alignItems: "center", gap: spacing.xs }}>
+              <View style={{ flexDirection: "row", gap: spacing.xs }}>
+                {trainingRules.map((rule, i) => (
+                  <View
+                    key={rule.key}
+                    style={{
+                      width: i === page ? 22 : 8,
+                      height: 8,
+                      borderRadius: 99,
+                      backgroundColor: i === page ? pc.green : pc.chip,
+                    }}
+                  />
+                ))}
+              </View>
+              {maxPageSeen < trainingRules.length - 1 ? (
+                <AppText size={11.5} color={pc.faint}>
+                  {str("training.swipe_hint")}
+                </AppText>
+              ) : null}
             </View>
             <PButton
-              label={str("common.continue")}
+              label={str("training.start_cta")}
               onPress={() => void submit()}
               loading={saving}
-              disabled={maxPageSeen < TRAINING_RULES.length - 1}
+              disabled={maxPageSeen < trainingRules.length - 1}
+              haptic="medium"
             />
           </View>
         ) : null}

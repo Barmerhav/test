@@ -17,7 +17,7 @@ export interface UpgradeSheetProps {
   onUpgraded: () => void;
 }
 
-/** Price-per-unit is computed live from the plans rows — never hardcoded. */
+/** Price-per-bag is computed live from the plans rows — never hardcoded. */
 export function perUnitAgorot(plan: {
   price_agorot: number;
   units_per_month: number;
@@ -28,7 +28,7 @@ export function perUnitAgorot(plan: {
 }
 
 /** Offered when submit fails with insufficient_allowance: bigger plans
- * compared by live price-per-unit, one tap to change_plan. */
+ * compared by live price-per-bag, one tap to change_plan. */
 export function UpgradeSheet({ visible, onClose, onUpgraded }: UpgradeSheetProps) {
   const str = useStr();
   const { plans, myState, refresh } = useAppState();
@@ -64,19 +64,12 @@ export function UpgradeSheet({ visible, onClose, onUpgraded }: UpgradeSheetProps
 
   return (
     <Sheet visible={visible} onClose={onClose}>
-      <AppText weight="bold" size={20}>
+      <AppText weight="heavy" size={20}>
         {str("plan.upgrade_title")}
       </AppText>
-      <AppText size={14} color={colors.muted}>
+      <AppText size={13.5} color={colors.text2}>
         {str("plan.upgrade_body")}
       </AppText>
-      {current ? (
-        <AppText size={13} color={colors.muted}>
-          {str("plan.price_per_unit", {
-            price: formatILS(perUnitAgorot(current)),
-          })}
-        </AppText>
-      ) : null}
       <View style={{ gap: spacing.sm }}>
         {candidates.map((plan) => (
           <Card key={plan.id} style={{ gap: spacing.sm }}>
@@ -87,10 +80,10 @@ export function UpgradeSheet({ visible, onClose, onUpgraded }: UpgradeSheetProps
                 justifyContent: "space-between",
               }}
             >
-              <AppText weight="bold" size={16}>
+              <AppText weight="heavy" size={16}>
                 {str(plan.name_strings_key)}
               </AppText>
-              <MonoText bold size={18}>
+              <MonoText weight="heavy" size={18}>
                 {formatILS(plan.price_agorot)}
               </MonoText>
             </View>
@@ -101,18 +94,30 @@ export function UpgradeSheet({ visible, onClose, onUpgraded }: UpgradeSheetProps
                 justifyContent: "space-between",
               }}
             >
-              <AppText size={13} color={colors.muted}>
+              <AppText size={12.5} color={colors.muted}>
                 {str("plan.units_included", { units: plan.units_per_month })}
               </AppText>
-              <AppText size={13} color={colors.success}>
-                {str("plan.price_per_unit", { price: formatILS(perUnitAgorot(plan)) })}
-              </AppText>
+              {/* live per-bag compare: current ← candidate */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                {current ? (
+                  <MonoText size={12} color={colors.faint}>
+                    {formatILS(perUnitAgorot(current))}
+                  </MonoText>
+                ) : null}
+                <AppText size={12} color={colors.faint}>
+                  ←
+                </AppText>
+                <AppText weight="bold" size={12.5} color={colors.greenDeep}>
+                  {str("plan.price_per_unit", { price: formatILS(perUnitAgorot(plan)) })}
+                </AppText>
+              </View>
             </View>
             <Button
               label={str("plan.upgrade_cta")}
               onPress={() => void upgrade(plan)}
               loading={busyPlanId === plan.id}
               compact
+              haptic="medium"
             />
           </Card>
         ))}

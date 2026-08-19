@@ -54,6 +54,14 @@ export async function chargeExtraRoll(
   return post({ action: "charge_extra_roll", format });
 }
 
+/** Backstop: paid dedicated-courier rescue on an expired request
+ * (config `backstop` gates the UI). */
+export async function chargeBackstop(
+  requestId: string,
+): Promise<Record<string, unknown>> {
+  return post({ action: "charge_backstop", request_id: requestId });
+}
+
 /**
  * Poll api.get_my_state until subscription.status === 'active'
  * (mock webhook settles within a couple of seconds; cap ~15s).

@@ -9,6 +9,7 @@ import { rpc } from "@/lib/supabase";
 import { useAppState, useStr } from "@/state/AppState";
 import { Button } from "@/ui/Button";
 import { Field } from "@/ui/Field";
+import { fireHaptic } from "@/ui/Pressy";
 import { Sheet } from "@/ui/Sheet";
 import { colors, spacing } from "@/ui/theme";
 import { AppText } from "@/ui/Text";
@@ -60,6 +61,7 @@ export function PaymentSheet({
       const active = await waitForSubscriptionActive();
       await refresh();
       if (active) {
+        void fireHaptic("success");
         onSuccess();
       } else {
         show(str(stringsKeyForError("unknown")), "error");
@@ -78,7 +80,7 @@ export function PaymentSheet({
       </AppText>
       {processing ? (
         <View style={{ alignItems: "center", paddingVertical: spacing.xl, gap: spacing.md }}>
-          <ActivityIndicator size="large" color={colors.success} />
+          <ActivityIndicator size="large" color={colors.green} />
         </View>
       ) : (
         <View style={{ gap: spacing.md }}>

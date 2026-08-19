@@ -24,7 +24,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   plugins: [
     "expo-router",
     "expo-font",
-    ["expo-splash-screen", { backgroundColor: "#F8F6F1" }],
+    ["expo-splash-screen", { backgroundColor: "#FAFAF8" }],
   ],
   extra: {
     supportsRTL: true,

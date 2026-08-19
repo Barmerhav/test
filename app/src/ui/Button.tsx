@@ -1,14 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  type StyleProp,
-  type ViewStyle,
-} from "react-native";
-import { colors, radii, TAP, spacing } from "./theme";
+import { ActivityIndicator, type StyleProp, type ViewStyle } from "react-native";
+import { Pressy, type HapticKind } from "./Pressy";
 import { AppText } from "./Text";
+import { colors, greenShadow, radii, spacing, TAP } from "./theme";
 
-type Kind = "primary" | "ghost" | "danger" | "success";
+type Kind = "primary" | "ghost" | "danger" | "success" | "dark";
 
 export interface ButtonProps {
   label: string;
@@ -18,22 +14,29 @@ export interface ButtonProps {
   loading?: boolean;
   style?: StyleProp<ViewStyle>;
   compact?: boolean;
+  /** taller hero CTA (62px, radius 18) per the submit-sheet artboard */
+  big?: boolean;
+  caption?: string;
+  haptic?: HapticKind;
 }
 
 const bgFor: Record<Kind, string> = {
-  primary: colors.accent,
+  primary: colors.green,
   ghost: "transparent",
   danger: colors.danger,
-  success: colors.success,
+  success: colors.greenDeep,
+  dark: colors.ink,
 };
 
 const fgFor: Record<Kind, string> = {
-  primary: colors.ink,
-  ghost: colors.ink,
+  primary: colors.onGreen,
+  ghost: colors.text2,
   danger: colors.card,
-  success: colors.card,
+  success: colors.onGreen,
+  dark: colors.bg,
 };
 
+/** Lemata primary button: 52px, radius 14, green with soft green shadow. */
 export function Button({
   label,
   onPress,
@@ -42,48 +45,60 @@ export function Button({
   loading,
   style,
   compact,
+  big,
+  caption,
+  haptic = "light",
 }: ButtonProps) {
   const inactive = disabled || loading;
+  const height = big ? 62 : compact ? TAP : 52;
   return (
-    <Pressable
+    <Pressy
       accessibilityRole="button"
       onPress={onPress}
       disabled={inactive}
-      style={({ pressed }) => [
+      haptic={inactive ? "none" : haptic}
+      style={[
         {
-          minHeight: compact ? TAP : 56,
-          borderRadius: radii.button,
+          minHeight: height,
+          borderRadius: big ? radii.buttonBig : radii.button,
           backgroundColor: inactive && kind !== "ghost" ? colors.line : bgFor[kind],
-          borderWidth: kind === "ghost" ? 1 : 0,
+          borderWidth: kind === "ghost" ? 1.5 : 0,
           borderColor: colors.line,
           alignItems: "center",
           justifyContent: "center",
           paddingHorizontal: spacing.lg,
-          paddingVertical: spacing.sm,
-          opacity: pressed ? 0.85 : 1,
+          paddingVertical: spacing.xs,
+          ...(kind === "primary" && !inactive ? greenShadow : null),
         },
         style,
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={fgFor[kind]} />
+        <ActivityIndicator color={kind === "ghost" ? colors.green : fgFor[kind]} />
       ) : (
-        <AppText
-          weight="bold"
-          size={compact ? 15 : 17}
-          color={inactive ? colors.muted : fgFor[kind]}
-          center
-        >
-          {label}
-        </AppText>
+        <>
+          <AppText
+            weight="heavy"
+            size={big ? 18 : compact ? 14 : 16}
+            color={inactive ? colors.muted : fgFor[kind]}
+            center
+          >
+            {label}
+          </AppText>
+          {caption ? (
+            <AppText size={12} color={inactive ? colors.faint : colors.onGreenDim} center>
+              {caption}
+            </AppText>
+          ) : null}
+        </>
       )}
-    </Pressable>
+    </Pressy>
   );
 }
 
 /**
  * Two-tap confirm button: first press arms it (visual shift), second press
- * within a few seconds executes. Avoids needing OK/Cancel dialog strings.
+ * within a few seconds executes. Avoids OK/Cancel dialog strings entirely.
  */
 export function ConfirmButton({
   label,
@@ -93,6 +108,7 @@ export function ConfirmButton({
   loading,
   style,
   compact = true,
+  haptic = "medium",
 }: ButtonProps) {
   const [armed, setArmed] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -124,6 +140,7 @@ export function ConfirmButton({
       loading={loading}
       style={style}
       compact={compact}
+      haptic={haptic}
     />
   );
 }

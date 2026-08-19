@@ -11,16 +11,19 @@ export interface AllowanceRingProps {
   credits: number;
   size?: number;
   strokeWidth?: number;
+  /** hide the caption + credits badge (compact usage-header variant) */
+  compact?: boolean;
 }
 
-/** Remaining-allowance ring: fill proportion = remaining/included, big mono
- * remaining in the middle, small '+N' credits badge when credits exist. */
+/** Allowance ring per artboard 03: deep-green arc on a soft track, big mono
+ * "remaining/included" center, caption home.allowance_left. */
 export function AllowanceRing({
   included,
   used,
   credits,
-  size = 160,
-  strokeWidth = 14,
+  size = 172,
+  strokeWidth = 13,
+  compact,
 }: AllowanceRingProps) {
   const str = useStr();
   const remaining = Math.max(0, included - used);
@@ -37,7 +40,7 @@ export function AllowanceRing({
             cx={center}
             cy={center}
             r={r}
-            stroke={colors.line}
+            stroke={colors.ringTrack}
             strokeWidth={strokeWidth}
             fill="none"
           />
@@ -45,7 +48,7 @@ export function AllowanceRing({
             cx={center}
             cy={center}
             r={r}
-            stroke={colors.success}
+            stroke={colors.greenDeep}
             strokeWidth={strokeWidth}
             strokeLinecap="round"
             fill="none"
@@ -63,29 +66,41 @@ export function AllowanceRing({
             end: 0,
             alignItems: "center",
             justifyContent: "center",
+            gap: 2,
           }}
         >
-          <MonoText bold size={size * 0.28} center>
-            {remaining}
-          </MonoText>
+          <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+            <MonoText weight="heavy" size={size * 0.23}>
+              {remaining}
+            </MonoText>
+            <MonoText weight="heavy" size={size * 0.128} color={colors.faint}>
+              {`/${included}`}
+            </MonoText>
+          </View>
+          {!compact ? (
+            <AppText
+              weight="semibold"
+              size={12.5}
+              color={colors.text2}
+              center
+              style={{ maxWidth: size * 0.8 }}
+            >
+              {str("home.allowance_left")}
+            </AppText>
+          ) : null}
         </View>
       </View>
-      <AppText weight="medium" size={14} color={colors.muted} center style={{ marginTop: spacing.xs }}>
-        {str("home.allowance_left", { units: remaining })}
-      </AppText>
-      {credits > 0 ? (
+      {!compact && credits > 0 ? (
         <View
           style={{
             marginTop: spacing.xs,
-            backgroundColor: colors.card,
-            borderColor: colors.success,
-            borderWidth: 1,
-            borderRadius: radii.chip,
+            backgroundColor: colors.mint,
+            borderRadius: radii.pill,
             paddingHorizontal: spacing.sm,
             paddingVertical: 4,
           }}
         >
-          <AppText weight="medium" size={13} color={colors.success}>
+          <AppText weight="bold" size={12.5} color={colors.greenDeep}>
             {str("home.credits_left", { units: credits })}
           </AppText>
         </View>

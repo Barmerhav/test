@@ -10,6 +10,7 @@ import {
 import { routeForState } from "@/lib/routing";
 import { supabase } from "@/lib/supabase";
 import { useAppState, useStr } from "@/state/AppState";
+import { fireHaptic, Pressy } from "@/ui/Pressy";
 import { Screen } from "@/ui/Screen";
 import { colors, fonts, radii, spacing, TAP } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
@@ -18,6 +19,7 @@ import { useRpcErrorToast } from "@/ui/Toast";
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
 
+/** OTP per artboard 01a: 6 boxes, auto-submit, live resend countdown. */
 export default function OtpScreen() {
   const str = useStr();
   const router = useRouter();
@@ -48,9 +50,10 @@ export default function OtpScreen() {
         type: "sms",
       });
       if (error) throw error;
+      void fireHaptic("success");
       const st = await refresh();
-      if (st && (st.residency || st.subscription)) {
-        // Returning user — straight to wherever their state points.
+      if (st && (st.residency || st.subscription || st.picker)) {
+        // returning user — straight to wherever their state points
         router.replace(routeForState(st).href);
       } else {
         router.replace("/(auth)/mode");
@@ -86,7 +89,7 @@ export default function OtpScreen() {
     >
       <Screen title={str("auth.otp_title")}>
         <Pressable onPress={() => inputRef.current?.focus()}>
-          {/* 6 visual digit boxes, LTR order (digits are LTR even in Hebrew UI) */}
+          {/* 6 digit boxes, LTR order (digits stay LTR inside the Hebrew UI) */}
           <View
             style={{
               flexDirection: "row",
@@ -104,15 +107,15 @@ export default function OtpScreen() {
                   style={{
                     width: TAP,
                     height: TAP + 10,
-                    borderRadius: radii.chip,
-                    borderWidth: active ? 2 : 1,
-                    borderColor: active ? colors.accent : colors.line,
+                    borderRadius: radii.field,
+                    borderWidth: active ? 2 : 1.5,
+                    borderColor: active ? colors.green : colors.line,
                     backgroundColor: colors.card,
                     alignItems: "center",
                     justifyContent: "center",
                   }}
                 >
-                  <MonoText bold size={24}>
+                  <MonoText weight="heavy" size={24}>
                     {filled ? code[i] : ""}
                   </MonoText>
                 </View>
@@ -138,19 +141,25 @@ export default function OtpScreen() {
         />
         <View style={{ alignItems: "center", marginTop: spacing.xl }}>
           {resendIn > 0 ? (
-            <MonoText size={16} color={colors.muted} center>
-              {`00:${String(resendIn).padStart(2, "0")}`}
-            </MonoText>
+            <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+              <AppText weight="semibold" size={14} color={colors.muted}>
+                {str("auth.otp_resend", { seconds: "" }).trim()}
+              </AppText>
+              <MonoText weight="bold" size={14} color={colors.text2}>
+                {`0:${String(resendIn).padStart(2, "0")}`}
+              </MonoText>
+            </View>
           ) : (
-            <Pressable
+            <Pressy
               accessibilityRole="button"
               onPress={() => void resend()}
-              style={{ minHeight: TAP, justifyContent: "center" }}
+              haptic="light"
+              style={{ minHeight: TAP, justifyContent: "center", paddingHorizontal: spacing.md }}
             >
-              <AppText weight="medium" size={16} color={colors.success}>
-                {str("auth.otp_resend")}
+              <AppText weight="bold" size={15} color={colors.greenDeep}>
+                {str("auth.otp_resend_now")}
               </AppText>
-            </Pressable>
+            </Pressy>
           )}
         </View>
       </Screen>

@@ -1,28 +1,31 @@
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { formatILS } from "@pinui/shared";
 import { PaymentSheet } from "@/components/PaymentSheet";
+import { perUnitAgorot } from "@/components/UpgradeSheet";
 import { recommendPlan } from "@/lib/recommendPlan";
 import { rpc } from "@/lib/supabase";
 import type { BagFormat, MySubscription, PlanRow } from "@/lib/types";
 import { useAppState, useStr } from "@/state/AppState";
 import { Button } from "@/ui/Button";
 import { Chip } from "@/ui/Chip";
+import { Pressy } from "@/ui/Pressy";
 import { Screen } from "@/ui/Screen";
 import { colors, radii, shadow, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
 import { useRpcErrorToast } from "@/ui/Toast";
 
-/** Tailoring chips: label ranges + weekly-bags midpoints (pure survey UX —
- * the recommendation math lives in src/lib/recommendPlan.ts). */
+/** Tailoring chips per artboard 02 — survey ranges with weekly midpoints
+ * (the recommendation math lives in src/lib/recommendPlan.ts). */
 const HOUSEHOLD_CHIPS = ["1–2", "3–4", "5+"] as const;
 const BAGS_WEEK_CHIPS: { label: string; midpoint: number }[] = [
-  { label: "1–3", midpoint: 2 },
-  { label: "4–7", midpoint: 5.5 },
-  { label: "8+", midpoint: 9 },
+  { label: "2–3", midpoint: 2.5 },
+  { label: "4–6", midpoint: 5 },
+  { label: "7+", midpoint: 8 },
 ];
 
+/** Plan picker per artboard 02: two questions, one pre-selected answer. */
 export default function PlanScreen() {
   const str = useStr();
   const router = useRouter();
@@ -51,13 +54,12 @@ export default function PlanScreen() {
     return recommendPlan(signupPlans, midpoint);
   }, [bagsIdx, signupPlans]);
 
-  // Preselect the recommended card whenever the answers change.
+  // pre-select the recommendation whenever the answers change
   useEffect(() => {
     if (recommended) setSelectedPlanId(recommended.id);
   }, [recommended]);
 
-  // If a pending_payment subscription already exists (relaunch mid-flow),
-  // jump straight back into the payment sheet.
+  // relaunch mid-flow with a pending_payment subscription → back to payment
   useEffect(() => {
     const sub = myState?.subscription;
     if (sub && sub.status === "pending_payment") setPaySubId(sub.id);
@@ -90,11 +92,11 @@ export default function PlanScreen() {
   };
 
   return (
-    <Screen title={str("plan.title")}>
+    <Screen title={str("plan.title")} subtitle={str("plan.subtitle")}>
       <View style={{ gap: spacing.lg }}>
-        {/* tailoring questions */}
+        {/* two tailoring questions */}
         <View style={{ gap: spacing.sm }}>
-          <AppText weight="medium" size={15}>
+          <AppText weight="bold" size={14}>
             {str("plan.q_household")}
           </AppText>
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
@@ -111,7 +113,7 @@ export default function PlanScreen() {
         </View>
 
         <View style={{ gap: spacing.sm }}>
-          <AppText weight="medium" size={15}>
+          <AppText weight="bold" size={14}>
             {str("plan.q_bags_week")}
           </AppText>
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
@@ -127,8 +129,9 @@ export default function PlanScreen() {
           </View>
         </View>
 
+        {/* bag format (kept functional — start_subscription needs it) */}
         <View style={{ gap: spacing.sm }}>
-          <AppText weight="medium" size={15}>
+          <AppText weight="bold" size={14}>
             {str("plan.q_format")}
           </AppText>
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
@@ -153,16 +156,17 @@ export default function PlanScreen() {
             const selected = plan.id === selectedPlanId;
             const isRecommended = recommended?.id === plan.id;
             return (
-              <Pressable
+              <Pressy
                 key={plan.id}
                 accessibilityRole="button"
                 onPress={() => setSelectedPlanId(plan.id)}
+                haptic="light"
                 style={{
                   backgroundColor: colors.card,
-                  borderRadius: radii.card,
+                  borderRadius: radii.cardBig,
                   borderWidth: selected ? 2 : 1,
-                  borderColor: selected ? colors.accent : colors.line,
-                  padding: spacing.md,
+                  borderColor: selected ? colors.green : colors.lineSoft,
+                  padding: 18,
                   gap: spacing.sm,
                   ...shadow,
                 }}
@@ -175,57 +179,83 @@ export default function PlanScreen() {
                   }}
                 >
                   <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                    <AppText weight="bold" size={18}>
+                    <AppText weight="heavy" size={17}>
                       {str(plan.name_strings_key)}
                     </AppText>
                     {isRecommended ? (
                       <View
                         style={{
-                          backgroundColor: colors.accent,
-                          borderRadius: radii.chip,
-                          paddingHorizontal: spacing.sm,
+                          backgroundColor: colors.green,
+                          borderRadius: radii.pill,
+                          paddingHorizontal: 10,
                           paddingVertical: 3,
                         }}
                       >
-                        <AppText weight="bold" size={12}>
+                        <AppText weight="heavy" size={11} color={colors.onGreen}>
                           {str("plan.recommended")}
                         </AppText>
                       </View>
                     ) : null}
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
-                    <MonoText bold size={22}>
+                    <MonoText weight="heavy" size={22}>
                       {formatILS(plan.price_agorot)}
                     </MonoText>
-                    <AppText size={12} color={colors.muted}>
+                    <AppText size={11.5} color={colors.muted}>
                       {str("plan.per_month")}
                     </AppText>
                   </View>
                 </View>
-                <AppText size={14}>
+                <AppText size={13.5}>
                   {str("plan.units_included", { units: plan.units_per_month })}
                 </AppText>
-                {plan.bags_included ? (
-                  <AppText size={13} color={colors.success}>
-                    {str("plan.bags_included")}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  {plan.bags_included ? (
+                    <AppText size={12.5} color={colors.greenDeep}>
+                      {str("plan.bags_included")}
+                    </AppText>
+                  ) : (
+                    <View />
+                  )}
+                  <AppText weight="bold" size={12} color={colors.muted}>
+                    {str("plan.price_per_unit", {
+                      price: formatILS(perUnitAgorot(plan)),
+                    })}
                   </AppText>
-                ) : null}
-              </Pressable>
+                </View>
+              </Pressy>
             );
           })}
         </View>
 
         {/* legal: no rollover */}
-        <AppText size={12} color={colors.muted} center>
+        <AppText size={11.5} color={colors.faint} center>
           {str("plan.no_rollover")}
         </AppText>
 
-        <Button
-          label={str("plan.pay_cta")}
-          onPress={() => void startAndPay()}
-          disabled={!selectedPlan}
-          loading={starting}
-        />
+        <View style={{ gap: spacing.xs }}>
+          <Button
+            label={
+              selectedPlan
+                ? str("plan.pay_cta", { price: formatILS(selectedPlan.price_agorot) })
+                : str("plan.pay_cta", { price: "—" })
+            }
+            onPress={() => void startAndPay()}
+            disabled={!selectedPlan}
+            loading={starting}
+            big
+            haptic="medium"
+          />
+          <AppText size={11.5} color={colors.muted} center>
+            {str("plan.pay_note")}
+          </AppText>
+        </View>
       </View>
 
       <PaymentSheet

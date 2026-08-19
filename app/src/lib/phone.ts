@@ -7,6 +7,8 @@ export function normalizeILPhone(raw: string): string | null {
   if (/^\+9725\d{8}$/.test(t)) return t;
   if (/^9725\d{8}$/.test(t)) return `+${t}`;
   if (/^05\d{8}$/.test(t)) return `+972${t.slice(1)}`;
+  // typed next to a +972 prefix chip, without the leading zero
+  if (/^5\d{8}$/.test(t)) return `+972${t}`;
   return null;
 }
 

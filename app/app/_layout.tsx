@@ -1,11 +1,15 @@
 import {
   Heebo_400Regular,
   Heebo_500Medium,
+  Heebo_600SemiBold,
   Heebo_700Bold,
+  Heebo_800ExtraBold,
+  Heebo_900Black,
 } from "@expo-google-fonts/heebo";
 import {
   JetBrainsMono_500Medium,
   JetBrainsMono_700Bold,
+  JetBrainsMono_800ExtraBold,
 } from "@expo-google-fonts/jetbrains-mono";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
@@ -69,9 +73,13 @@ export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     Heebo_400Regular,
     Heebo_500Medium,
+    Heebo_600SemiBold,
     Heebo_700Bold,
+    Heebo_800ExtraBold,
+    Heebo_900Black,
     JetBrainsMono_500Medium,
     JetBrainsMono_700Bold,
+    JetBrainsMono_800ExtraBold,
   });
 
   return (

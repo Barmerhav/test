@@ -1,82 +1,27 @@
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Modal, Pressable, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Modal, View } from "react-native";
 import { countUnits } from "@pinui/shared";
 import { base64ToArrayBuffer } from "@/lib/base64";
 import { rpc, supabase } from "@/lib/supabase";
-import type { ClaimRow, CollectAdjustment, StopRequestRow } from "@/lib/types";
+import type {
+  ClaimRow,
+  CollectAdjustment,
+  StopBuildingRow,
+  StopRequestRow,
+  StopResidencyRow,
+} from "@/lib/types";
 import { useAppState, useConfig, useStr } from "@/state/AppState";
-import { PButton, PCard, PChip, PScreen } from "@/ui/PickerUI";
+import { PButton, PCard, PScreen } from "@/ui/PickerUI";
+import { fireHaptic, Pressy } from "@/ui/Pressy";
 import { PICKER_TAP, pickerColors as pc, radii, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
 import { useRpcErrorToast, useToast } from "@/ui/Toast";
 
-function Stepper({
-  label,
-  value,
-  onChange,
-  min = 0,
-}: {
-  label: string;
-  value: number;
-  onChange: (n: number) => void;
-  min?: number;
-}) {
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: spacing.sm,
-      }}
-    >
-      <AppText size={14} color={pc.text} style={{ flexShrink: 1 }}>
-        {label}
-      </AppText>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => onChange(Math.max(min, value - 1))}
-          style={{
-            width: PICKER_TAP - 8,
-            height: PICKER_TAP - 8,
-            borderRadius: (PICKER_TAP - 8) / 2,
-            backgroundColor: pc.surface,
-            borderWidth: 1,
-            borderColor: pc.line,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Ionicons name="remove" size={22} color={pc.text} />
-        </Pressable>
-        <MonoText bold size={22} color={pc.text} center style={{ minWidth: 36 }}>
-          {value}
-        </MonoText>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => onChange(value + 1)}
-          style={{
-            width: PICKER_TAP - 8,
-            height: PICKER_TAP - 8,
-            borderRadius: (PICKER_TAP - 8) / 2,
-            backgroundColor: pc.surface,
-            borderWidth: 1,
-            borderColor: pc.line,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Ionicons name="add" size={22} color={pc.text} />
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
+/** Collection per artboard 12: checklist per bag, ×2-oversized chips, leak
+ * photo flow, one CTA that leads straight to the bin QR scan. */
 export default function CollectScreen() {
   const str = useStr();
   const router = useRouter();
@@ -89,12 +34,10 @@ export default function CollectScreen() {
 
   const [claim, setClaim] = useState<ClaimRow | null>(null);
   const [request, setRequest] = useState<StopRequestRow | null>(null);
+  const [residency, setResidency] = useState<StopResidencyRow | null>(null);
+  const [street, setStreet] = useState("");
   const [ticked, setTicked] = useState<boolean[]>([]);
-  const [adjusting, setAdjusting] = useState(false);
-  const [largeBags, setLargeBags] = useState(0);
-  const [smallBags, setSmallBags] = useState(0);
-  const [oversizedBags, setOversizedBags] = useState(0);
-  const [overweight, setOverweight] = useState(false);
+  const [oversized, setOversized] = useState<boolean[]>([]);
   const [busy, setBusy] = useState(false);
 
   // leak flow
@@ -108,42 +51,59 @@ export default function CollectScreen() {
     const cRes = await supabase.from("claims").select("*").eq("id", claimId).limit(1);
     const c = ((cRes.data ?? []) as ClaimRow[])[0] ?? null;
     setClaim(c);
-    if (c) {
-      const rRes = await supabase
-        .from("requests")
-        .select("id,units_requested,notes,residency_id,building_id,status")
-        .eq("id", c.request_id)
-        .limit(1);
-      const r = ((rRes.data ?? []) as StopRequestRow[])[0] ?? null;
-      setRequest(r);
-      if (r) {
-        setTicked(Array.from({ length: r.units_requested }, () => false));
-        setLargeBags(r.units_requested);
-      }
-    }
+    if (!c) return;
+    const rRes = await supabase
+      .from("requests")
+      .select("id,units_requested,notes,residency_id,building_id,status")
+      .eq("id", c.request_id)
+      .limit(1);
+    const r = ((rRes.data ?? []) as StopRequestRow[])[0] ?? null;
+    setRequest(r);
+    if (!r) return;
+    setTicked(Array.from({ length: r.units_requested }, () => false));
+    setOversized(Array.from({ length: r.units_requested }, () => false));
+    const [resRes, bRes] = await Promise.all([
+      supabase
+        .from("residencies")
+        .select("id,floor,apartment,door_note")
+        .eq("id", r.residency_id)
+        .limit(1),
+      supabase
+        .from("buildings")
+        .select("id,street,house_number,city,lat,lng,bin_location_note")
+        .eq("id", r.building_id)
+        .limit(1),
+    ]);
+    setResidency(((resRes.data ?? []) as StopResidencyRow[])[0] ?? null);
+    const b = ((bRes.data ?? []) as StopBuildingRow[])[0] ?? null;
+    if (b) setStreet(`${b.street} ${b.house_number}`);
   }, [claimId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const adjustment: CollectAdjustment | null = adjusting
-    ? {
-        large_bags: largeBags,
-        small_bags: smallBags,
-        oversized_bags: oversizedBags,
-        small_group_overweight: overweight,
-      }
-    : null;
+  const oversizedCount = oversized.filter(Boolean).length;
+  const tickedCount = ticked.filter(Boolean).length;
+  const requested = request?.units_requested ?? 0;
 
-  const adjustedUnits = adjustment
+  /** ×2 chips → adjustment; untouched → null (server counts as requested). */
+  const adjustment: CollectAdjustment | null = useMemo(() => {
+    if (oversizedCount === 0) return null;
+    return {
+      large_bags: Math.max(0, requested - oversizedCount),
+      small_bags: 0,
+      oversized_bags: oversizedCount,
+    };
+  }, [oversizedCount, requested]);
+
+  const countedUnits = adjustment
     ? countUnits(unitRules, {
         largeBags: adjustment.large_bags,
         smallBags: adjustment.small_bags,
         oversizedBags: adjustment.oversized_bags,
-        smallGroupOverweight: adjustment.small_group_overweight,
       })
-    : (request?.units_requested ?? 0);
+    : requested;
 
   const done = async () => {
     if (!claim) return;
@@ -153,6 +113,7 @@ export default function CollectScreen() {
         p_claim_id: claim.id,
         p_adjustment: adjustment,
       });
+      void fireHaptic("success");
       router.back();
     } catch (err) {
       rpcErrorToast(err);
@@ -206,108 +167,177 @@ export default function CollectScreen() {
   };
 
   return (
-    <PScreen title={str("collect.title")}>
-      <View style={{ gap: spacing.lg }}>
-        {/* per-unit checklist */}
-        <PCard style={{ gap: spacing.sm }}>
-          {ticked.map((t, i) => (
-            <Pressable
-              key={i}
-              accessibilityRole="checkbox"
-              onPress={() =>
-                setTicked((prev) => prev.map((v, j) => (j === i ? !v : v)))
-              }
-              style={{
-                minHeight: PICKER_TAP,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.sm,
-              }}
-            >
-              <Ionicons
-                name={t ? "checkmark-circle" : "ellipse-outline"}
-                size={28}
-                color={t ? pc.success : pc.muted}
-              />
-              <AppText size={15} color={pc.text}>
-                {str("collect.unit_check", { n: i + 1 })}
-              </AppText>
-            </Pressable>
-          ))}
-        </PCard>
+    <PScreen
+      title={str("collect.title", { street })}
+      headerEnd={
+        <MonoText weight="heavy" size={16} color={pc.money}>
+          {`${tickedCount}/${requested}`}
+        </MonoText>
+      }
+    >
+      <View style={{ gap: spacing.md }}>
+        {/* progress */}
+        <View
+          style={{
+            height: 6,
+            borderRadius: 99,
+            backgroundColor: pc.chip,
+            overflow: "hidden",
+          }}
+        >
+          <View
+            style={{
+              height: 6,
+              borderRadius: 99,
+              width: `${requested > 0 ? Math.round((tickedCount / requested) * 100) : 0}%`,
+              backgroundColor: pc.green,
+            }}
+          />
+        </View>
 
-        {/* unit-counting chips / adjustment */}
-        <PCard style={{ gap: spacing.md }}>
-          <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
-            <PChip
-              label={str("collect.chip_small")}
-              selected={adjusting && smallBags > 0}
-              onPress={() => {
-                setAdjusting(true);
-                setSmallBags((v) => (v > 0 ? 0 : unitRules.max_small_bags_per_unit));
-              }}
-              style={{ flexGrow: 1 }}
-            />
-            <PChip
-              label={str("collect.chip_oversized")}
-              selected={adjusting && oversizedBags > 0}
-              onPress={() => {
-                setAdjusting(true);
-                setOversizedBags((v) => (v > 0 ? 0 : 1));
-              }}
-              style={{ flexGrow: 1 }}
-            />
-          </View>
-          {adjusting ? (
-            <View style={{ gap: spacing.md }}>
-              <Stepper label={str("collect.chip_large")} value={largeBags} onChange={setLargeBags} />
-              <Stepper label={str("collect.chip_small")} value={smallBags} onChange={setSmallBags} />
-              <Stepper
-                label={str("collect.chip_oversized")}
-                value={oversizedBags}
-                onChange={setOversizedBags}
-              />
-              <PChip
-                label={str("collect.chip_overweight")}
-                selected={overweight}
-                onPress={() => setOverweight((v) => !v)}
-              />
+        {residency?.door_note || request?.notes ? (
+          <AppText size={12} color={pc.faint}>
+            {[residency?.door_note, request?.notes].filter(Boolean).join(" · ")}
+          </AppText>
+        ) : null}
+
+        {/* per-bag checklist with ×2 chips */}
+        <View style={{ gap: spacing.sm }}>
+          {ticked.map((t, i) => {
+            const over = oversized[i] ?? false;
+            return (
               <View
+                key={i}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  justifyContent: "space-between",
+                  gap: spacing.sm,
+                  backgroundColor: pc.surface,
+                  borderWidth: 1,
+                  borderColor: pc.line,
+                  borderRadius: 16,
+                  paddingHorizontal: 14,
+                  minHeight: 64,
                 }}
               >
-                <AppText size={14} color={pc.muted}>
-                  {str("submit.units_label")}
-                </AppText>
-                <MonoText bold size={24} color={pc.amber}>
-                  {adjustedUnits}
-                </MonoText>
+                <Pressy
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: t }}
+                  onPress={() =>
+                    setTicked((prev) => prev.map((v, j) => (j === i ? !v : v)))
+                  }
+                  haptic="light"
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 99,
+                    backgroundColor: t ? pc.green : "transparent",
+                    borderWidth: t ? 0 : 2,
+                    borderColor: pc.lineStrong,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {t ? <Ionicons name="checkmark" size={18} color={pc.onGreen} /> : null}
+                </Pressy>
+                <View style={{ flex: 1, gap: 1 }}>
+                  <AppText weight="bold" size={14.5} color={pc.text}>
+                    {str("collect.unit_check", { n: i + 1 })}
+                  </AppText>
+                  {over ? (
+                    <AppText size={11} color={pc.muted}>
+                      {str("collect.counts_as", { units: unitRules.oversized_multiplier })}
+                    </AppText>
+                  ) : null}
+                </View>
+                <Pressy
+                  accessibilityRole="button"
+                  onPress={() =>
+                    setOversized((prev) => prev.map((v, j) => (j === i ? !v : v)))
+                  }
+                  haptic="light"
+                  style={{
+                    borderRadius: radii.pill,
+                    borderWidth: 1.5,
+                    borderColor: over ? pc.green : pc.lineStrong,
+                    backgroundColor: over ? pc.glowSoft : "transparent",
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                  }}
+                >
+                  <AppText weight="bold" size={11.5} color={over ? pc.money : pc.muted}>
+                    {str("collect.chip_oversized")}
+                  </AppText>
+                </Pressy>
               </View>
-            </View>
-          ) : null}
-        </PCard>
+            );
+          })}
+        </View>
 
-        <PButton
-          label={str("collect.done_cta")}
-          onPress={() => void done()}
-          loading={busy}
-          disabled={!claim || adjustedUnits < 1}
-        />
+        {/* live recount when chips changed */}
+        {adjustment ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingHorizontal: 4,
+            }}
+          >
+            <AppText size={12.5} color={pc.muted}>
+              {str("submit.units_label")}
+            </AppText>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <AppText size={12} color={pc.faint}>
+                {str("collect.counts_as", { units: countedUnits })}
+              </AppText>
+              <MonoText weight="heavy" size={20} color={pc.money}>
+                {countedUnits}
+              </MonoText>
+            </View>
+          </View>
+        ) : null}
 
         {/* leak decline */}
-        <PCard style={{ gap: spacing.sm }}>
-          <PButton
-            label={str("collect.leak_cta")}
-            kind="danger"
+        <PCard dashed style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 99,
+              backgroundColor: pc.chip,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="camera-outline" size={19} color={pc.muted} />
+          </View>
+          <Pressy
+            accessibilityRole="button"
             onPress={() => void openLeakCamera()}
-          />
-          <AppText size={12} color={pc.muted} center>
-            {str("collect.leak_note")}
-          </AppText>
+            style={{ flex: 1, minHeight: PICKER_TAP - 12, justifyContent: "center" }}
+          >
+            <AppText weight="bold" size={14} color={pc.text}>
+              {str("collect.leak_cta")}
+            </AppText>
+            <AppText size={11.5} color={pc.muted} style={{ marginTop: 2 }}>
+              {str("collect.leak_note")}
+            </AppText>
+          </Pressy>
         </PCard>
+
+        <View style={{ gap: spacing.xs }}>
+          <PButton
+            label={str("collect.done_cta")}
+            onPress={() => void done()}
+            loading={busy}
+            disabled={!claim || tickedCount < requested}
+            haptic="medium"
+          />
+          <AppText size={11.5} color={pc.faint} center>
+            {str("collect.done_note")}
+          </AppText>
+        </View>
       </View>
 
       {/* leak photo capture */}
@@ -323,39 +353,40 @@ export default function CollectScreen() {
               backgroundColor: pc.bg,
             }}
           >
-            <Pressable
+            <Pressy
               accessibilityRole="button"
               onPress={() => setCameraOpen(false)}
               style={{
                 width: PICKER_TAP,
                 height: PICKER_TAP,
                 borderRadius: PICKER_TAP / 2,
-                borderWidth: 1,
-                borderColor: pc.line,
+                borderWidth: 1.5,
+                borderColor: pc.lineStrong,
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
               <Ionicons name="close" size={26} color={pc.text} />
-            </Pressable>
-            <Pressable
+            </Pressy>
+            <Pressy
               accessibilityRole="button"
               onPress={() => void captureLeak()}
               disabled={capturing}
+              haptic="medium"
               style={{
                 width: PICKER_TAP + 16,
                 height: PICKER_TAP + 16,
                 borderRadius: (PICKER_TAP + 16) / 2,
-                backgroundColor: capturing ? pc.line : pc.danger,
+                backgroundColor: capturing ? pc.chip : pc.danger,
                 alignItems: "center",
                 justifyContent: "center",
                 borderWidth: 4,
-                borderColor: pc.paper,
+                borderColor: pc.text,
               }}
             >
               <Ionicons name="camera" size={30} color={pc.ink} />
-            </Pressable>
-            <View style={{ width: PICKER_TAP, height: PICKER_TAP, borderRadius: radii.chip }} />
+            </Pressy>
+            <View style={{ width: PICKER_TAP, height: PICKER_TAP }} />
           </View>
         </View>
       </Modal>

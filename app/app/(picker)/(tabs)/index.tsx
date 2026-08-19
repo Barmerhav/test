@@ -1,13 +1,23 @@
+import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useRef, useState } from "react";
-import { FlatList, RefreshControl, Switch, View } from "react-native";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { FlatList, RefreshControl, View } from "react-native";
 import { formatILS, rpcErrorCode } from "@pinui/shared";
+import { FeedMap, MAPS_AVAILABLE } from "@/components/FeedMap";
 import { formatTime } from "@/lib/dates";
-import { rpc } from "@/lib/supabase";
+import { rpc, supabase } from "@/lib/supabase";
 import type { ClaimResult, FeedRow } from "@/lib/types";
 import { useAppState, useStr } from "@/state/AppState";
-import { PButton, PCard, PScreen } from "@/ui/PickerUI";
+import {
+  PAvailabilityPill,
+  PButton,
+  PCard,
+  PScreen,
+  PSegmented,
+} from "@/ui/PickerUI";
+import { fireHaptic, Pressy } from "@/ui/Pressy";
+import { SkeletonList } from "@/ui/Skeleton";
 import { pickerColors as pc, radii, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
 import { useRpcErrorToast, useToast } from "@/ui/Toast";
@@ -18,23 +28,29 @@ const FEED_POLL_MS = 30_000;
 // TODO(later slice): subscribe to a Realtime broadcast channel for instant
 // new-request pings instead of (in addition to) polling.
 
+type ViewMode = "list" | "map";
+
+/** Feed per artboards 10/10b: money pins, one-tap claims, building groups. */
 export default function FeedScreen() {
   const str = useStr();
   const router = useRouter();
   const { show } = useToast();
   const rpcErrorToast = useRpcErrorToast();
-  const { myState, patchPicker, refresh } = useAppState();
+  const { session, myState, patchPicker, refresh } = useAppState();
 
-  const [rows, setRows] = useState<FeedRow[]>([]);
+  const [rows, setRows] = useState<FeedRow[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [activeStops, setActiveStops] = useState(0);
   const coordsRef = useRef<{ lat: number; lng: number } | null>(null);
 
   const available = myState?.picker?.available ?? false;
+  const uid = session?.user.id ?? null;
 
   const load = useCallback(async () => {
     try {
-      // best-effort foreground location → distance sorting hint in the feed
+      // best-effort foreground location → distances + map centering
       if (!coordsRef.current) {
         try {
           const perm = await Location.requestForegroundPermissionsAsync();
@@ -48,7 +64,7 @@ export default function FeedScreen() {
             };
           }
         } catch {
-          // no location — feed works without distances
+          // no location — the feed works without distances
         }
       }
       const args = coordsRef.current
@@ -56,11 +72,19 @@ export default function FeedScreen() {
         : {};
       const data = await rpc<FeedRow[]>("open_feed", args);
       setRows(data ?? []);
+      if (uid) {
+        const { count } = await supabase
+          .from("claims")
+          .select("id", { count: "exact", head: true })
+          .eq("picker_id", uid)
+          .eq("status", "active");
+        setActiveStops(count ?? 0);
+      }
     } catch (err) {
-      // suspended/not-active toasts are meaningful here; stay quiet otherwise
+      setRows((prev) => prev ?? []);
       if (rpcErrorCode(err) !== "unknown") rpcErrorToast(err);
     }
-  }, [rpcErrorToast]);
+  }, [rpcErrorToast, uid]);
 
   useFocusEffect(
     useCallback(() => {
@@ -90,8 +114,9 @@ export default function FeedScreen() {
     setClaimingId(row.request_id);
     try {
       await rpc<ClaimResult>("claim_request", { p_request_id: row.request_id });
+      void fireHaptic("success");
       void refresh();
-      router.push("/(picker)/(tabs)/stop");
+      router.push("/(picker)/stop");
     } catch (err) {
       if (rpcErrorCode(err) === "already_claimed") {
         show(str("feed.already_claimed"), "info");
@@ -104,94 +129,202 @@ export default function FeedScreen() {
     }
   };
 
-  return (
-    <PScreen
-      scroll={false}
-      title={str("feed.title")}
-      headerEnd={
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <AppText size={13} color={pc.muted}>
-            {str("feed.available_toggle")}
-          </AppText>
-          <Switch
-            value={available}
-            onValueChange={(v) => void toggleAvailability(v)}
-            trackColor={{ false: pc.line, true: pc.success }}
-            thumbColor={pc.paper}
-          />
-        </View>
-      }
-    >
-      <FlatList
-        data={rows}
-        keyExtractor={(row) => row.request_id}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => void onRefresh()}
-            tintColor={pc.amber}
-          />
-        }
-        ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
-        contentContainerStyle={{ paddingBottom: spacing.xl, flexGrow: 1 }}
-        ListEmptyComponent={
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-            <AppText size={15} color={pc.muted} center>
-              {str("feed.empty")}
-            </AppText>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <PCard style={{ gap: spacing.sm }}>
+  /** Effective feed radius = the farthest visible request (live data). */
+  const radius = useMemo(() => {
+    const dists = (rows ?? [])
+      .map((r) => r.distance_m)
+      .filter((d): d is number => d !== null);
+    return dists.length > 0 ? Math.max(...dists) : null;
+  }, [rows]);
+
+  const groupLeaders = useMemo(() => {
+    // one card per building: the earliest request carries the group CTA
+    const seen = new Set<string>();
+    return (rows ?? []).filter((r) => {
+      if (seen.has(r.building_id)) return false;
+      seen.add(r.building_id);
+      return true;
+    });
+  }, [rows]);
+
+  const groupPayout = useCallback(
+    (leader: FeedRow) =>
+      (rows ?? [])
+        .filter((r) => r.building_id === leader.building_id)
+        .reduce((sum, r) => sum + r.payout_agorot, 0),
+    [rows],
+  );
+
+  const groupUnits = useCallback(
+    (leader: FeedRow) =>
+      (rows ?? [])
+        .filter((r) => r.building_id === leader.building_id)
+        .reduce((sum, r) => sum + r.units, 0),
+    [rows],
+  );
+
+  const renderCard = (item: FeedRow) => {
+    const grouped = item.building_open_count > 1;
+    const payout = grouped ? groupPayout(item) : item.payout_agorot;
+    const units = grouped ? groupUnits(item) : item.units;
+    return (
+      <PCard style={{ gap: spacing.sm }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
+          <View style={{ flex: 1, gap: 6 }}>
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                justifyContent: "space-between",
-                gap: spacing.sm,
+                gap: spacing.xs,
+                flexWrap: "wrap",
               }}
             >
-              <AppText weight="bold" size={17} color={pc.text} numberOfLines={1} style={{ flexShrink: 1 }}>
+              <AppText weight="heavy" size={17} color={pc.text}>
                 {`${item.street} ${item.house_number}`}
               </AppText>
-              <MonoText bold size={26} color={pc.amber}>
-                {formatILS(item.payout_agorot)}
-              </MonoText>
+              {grouped ? (
+                <View
+                  style={{
+                    backgroundColor: pc.chip,
+                    borderRadius: radii.pill,
+                    paddingHorizontal: 9,
+                    paddingVertical: 3,
+                  }}
+                >
+                  <AppText weight="bold" size={10.5} color={pc.soft}>
+                    {str("feed.building_group", { count: item.building_open_count })}
+                  </AppText>
+                </View>
+              ) : null}
             </View>
-            <AppText size={14} color={pc.muted} style={{ lineHeight: 21 }}>
+            <AppText size={12} color={pc.muted}>
               {str("feed.card", {
-                street: `${item.street} ${item.house_number}`,
-                units: item.units,
-                payout: formatILS(item.payout_agorot),
                 distance: item.distance_m ?? "—",
+                units,
                 deadline: formatTime(item.expires_at),
               })}
             </AppText>
-            {item.building_open_count > 1 ? (
-              <View
-                style={{
-                  alignSelf: "flex-start",
-                  backgroundColor: pc.bg,
-                  borderColor: pc.amber,
-                  borderWidth: 1,
-                  borderRadius: radii.chip,
-                  paddingHorizontal: spacing.sm,
-                  paddingVertical: 4,
-                }}
-              >
-                <AppText size={13} color={pc.amber}>
-                  {str("feed.building_group", { count: item.building_open_count })}
-                </AppText>
-              </View>
+            {grouped ? (
+              <AppText size={11.5} color={pc.faint}>
+                {str("feed.code_after_claim")}
+              </AppText>
             ) : null}
-            <PButton
-              label={str("feed.claim_cta")}
-              onPress={() => void claim(item)}
-              loading={claimingId === item.request_id}
+          </View>
+          <View style={{ alignItems: "flex-end", gap: 3 }}>
+            <MonoText weight="heavy" size={grouped ? 27 : 22} color={pc.money}>
+              {formatILS(payout)}
+            </MonoText>
+          </View>
+        </View>
+        <PButton
+          label={grouped ? str("feed.claim_all_cta") : str("feed.claim_cta")}
+          onPress={() => void claim(item)}
+          loading={claimingId === item.request_id}
+          compact={!grouped}
+          haptic="medium"
+        />
+      </PCard>
+    );
+  };
+
+  const subtitle = (
+    <AppText size={12} color={pc.muted}>
+      {str("feed.subtitle", {
+        count: rows?.length ?? 0,
+        radius: radius ?? "—",
+      })}
+    </AppText>
+  );
+
+  return (
+    <PScreen
+      scroll={false}
+      title={str("feed.title")}
+      subtitle={subtitle}
+      headerEnd={
+        <PAvailabilityPill
+          label={str("feed.available_toggle")}
+          on={available}
+          onToggle={(v) => void toggleAvailability(v)}
+        />
+      }
+    >
+      {/* list / map segmented control (map hidden when the module is absent) */}
+      {MAPS_AVAILABLE ? (
+        <PSegmented
+          options={[
+            { key: "list", label: str("feed.view_list") },
+            { key: "map", label: str("feed.view_map") },
+          ]}
+          value={viewMode}
+          onChange={(k) => setViewMode(k as ViewMode)}
+          style={{ marginBottom: spacing.md }}
+        />
+      ) : null}
+
+      {/* active stop shortcut */}
+      {activeStops > 0 ? (
+        <Pressy
+          accessibilityRole="button"
+          onPress={() => router.push("/(picker)/stop")}
+          haptic="light"
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+            backgroundColor: pc.timerBg,
+            borderRadius: radii.card,
+            padding: 14,
+            marginBottom: spacing.md,
+          }}
+        >
+          <Ionicons name="navigate" size={18} color={pc.timerText} />
+          <AppText weight="heavy" size={14.5} color={pc.timerText} style={{ flex: 1 }}>
+            {str("stop.title")}
+          </AppText>
+          <Ionicons name="chevron-back" size={18} color={pc.timerText} />
+        </Pressy>
+      ) : null}
+
+      {viewMode === "map" && MAPS_AVAILABLE && rows !== null ? (
+        <FeedMap
+          rows={rows}
+          userCoords={coordsRef.current}
+          onPressRow={(row) => void claim(row)}
+        />
+      ) : rows === null ? (
+        <SkeletonList rows={4} height={110} dark />
+      ) : (
+        <FlatList
+          data={groupLeaders}
+          keyExtractor={(row) => row.request_id}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void onRefresh()}
+              tintColor={pc.green}
             />
-          </PCard>
-        )}
-      />
+          }
+          ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+          contentContainerStyle={{ paddingBottom: spacing.xl, flexGrow: 1 }}
+          ListEmptyComponent={
+            <View
+              style={{
+                flex: 1,
+                alignItems: "center",
+                justifyContent: "center",
+                gap: spacing.sm,
+              }}
+            >
+              <AppText size={40}>🌙</AppText>
+              <AppText size={14} color={pc.muted} center style={{ maxWidth: 260 }}>
+                {str("feed.empty")}
+              </AppText>
+            </View>
+          }
+          renderItem={({ item }) => renderCard(item)}
+        />
+      )}
     </PScreen>
   );
 }

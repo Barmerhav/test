@@ -3,11 +3,52 @@
 
 const pad = (n: number): string => String(n).padStart(2, "0");
 
-export function formatDate(iso: string | null | undefined): string {
+const intlLocale = (locale: "he" | "en"): string => (locale === "he" ? "he-IL" : "en-US");
+
+/** Localized short date via Intl (he-IL / en-US); manual dd.mm fallback. */
+export function formatDateIntl(
+  iso: string | null | undefined,
+  locale: "he" | "en" = "he",
+): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+  try {
+    return new Intl.DateTimeFormat(intlLocale(locale), {
+      day: "numeric",
+      month: "numeric",
+    }).format(d);
+  } catch {
+    return `${d.getDate()}.${d.getMonth() + 1}`;
+  }
+}
+
+/** Localized month name (usage header). */
+export function formatMonthName(locale: "he" | "en" = "he", d: Date = new Date()): string {
+  try {
+    return new Intl.DateTimeFormat(intlLocale(locale), { month: "long" }).format(d);
+  } catch {
+    return `${d.getMonth() + 1}.${d.getFullYear()}`;
+  }
+}
+
+/** Localized weekday + short date, e.g. "יום ה׳ 20.8" (payout schedule). */
+export function formatWeekdayDate(
+  iso: string | null | undefined,
+  locale: "he" | "en" = "he",
+): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  try {
+    return new Intl.DateTimeFormat(intlLocale(locale), {
+      weekday: "short",
+      day: "numeric",
+      month: "numeric",
+    }).format(d);
+  } catch {
+    return `${d.getDate()}.${d.getMonth() + 1}`;
+  }
 }
 
 export function formatTime(iso: string | null | undefined): string {

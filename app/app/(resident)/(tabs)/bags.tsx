@@ -1,139 +1,165 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { View } from "react-native";
-import { formatDate } from "@/lib/dates";
+import { BuildingMeterCard } from "@/components/BuildingMeterCard";
 import { supabase } from "@/lib/supabase";
 import type { BagRollRow } from "@/lib/types";
 import { useAppState, useConfig, useStr } from "@/state/AppState";
+import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { Screen } from "@/ui/Screen";
+import { SkeletonList } from "@/ui/Skeleton";
 import { colors, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
 
+/** Bags per artboard 07: roll status, what-counts-as-a-bag rules
+ * (config-parameterized), building meter with invite CTA. */
 export default function BagsScreen() {
   const str = useStr();
-  const { myState } = useAppState();
-  const meterConfig = useConfig("building_meter");
-  const [rolls, setRolls] = useState<BagRollRow[]>([]);
+  const router = useRouter();
+  const { myState, refresh } = useAppState();
+  const unitRules = useConfig("unit_rules");
+  const [rolls, setRolls] = useState<BagRollRow[] | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const doors = myState?.residency?.meter_doors ?? 0;
-  const tiers = [...meterConfig.tiers].sort((a, b) => a.doors - b.doors);
-  const nextTier = tiers.find((t) => t.doors > doors) ?? null;
-  const reachedTier = [...tiers].reverse().find((t) => t.doors <= doors) ?? null;
+  const load = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("bag_rolls")
+      .select("*")
+      .order("ordered_at", { ascending: false });
+    if (!error && data) setRolls(data as BagRollRow[]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      let alive = true;
-      const load = async () => {
-        const { data, error } = await supabase
-          .from("bag_rolls")
-          .select("*")
-          .order("ordered_at", { ascending: false });
-        if (alive && !error && data) setRolls(data as BagRollRow[]);
-      };
       void load();
-      return () => {
-        alive = false;
-      };
-    }, []),
+    }, [load]),
   );
 
-  return (
-    <Screen title={str("bags.title")}>
-      <View style={{ gap: spacing.lg }}>
-        <View style={{ gap: spacing.sm }}>
-          {rolls.map((roll) => {
-            const delivered = roll.status === "delivered";
-            return (
-              <Card key={roll.id} style={{ gap: spacing.sm }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: spacing.sm,
-                  }}
-                >
-                  <Ionicons
-                    name={delivered ? "checkmark-circle" : "time-outline"}
-                    size={22}
-                    color={delivered ? colors.success : colors.muted}
-                  />
-                  <AppText weight="medium" size={15} style={{ flex: 1 }}>
-                    {str(
-                      roll.format === "large"
-                        ? "plan.format_large"
-                        : "plan.format_small",
-                    )}
-                  </AppText>
-                  <MonoText bold size={17}>
-                    {roll.roll_count}
-                  </MonoText>
-                </View>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <MonoText size={13} color={colors.muted}>
-                    {formatDate(roll.ordered_at)}
-                  </MonoText>
-                  {roll.delivered_at ? (
-                    <MonoText size={13} color={colors.success}>
-                      {formatDate(roll.delivered_at)}
-                    </MonoText>
-                  ) : null}
-                </View>
-              </Card>
-            );
-          })}
-        </View>
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([load(), refresh()]);
+    setRefreshing(false);
+  };
 
-        {/* Building meter — live doors count + next tier from config */}
-        {meterConfig.enabled ? (
-          <Card style={{ gap: spacing.sm }}>
-            <AppText weight="bold" size={17}>
-              {str("meter.title")}
-            </AppText>
-            <AppText size={14}>{str("meter.progress", { doors })}</AppText>
-            {nextTier ? (
-              <>
-                <View
-                  style={{
-                    height: 10,
-                    borderRadius: 5,
-                    backgroundColor: colors.line,
-                    overflow: "hidden",
-                  }}
-                >
-                  <View
-                    style={{
-                      height: 10,
-                      borderRadius: 5,
-                      width: `${Math.min(100, Math.round((doors / nextTier.doors) * 100))}%`,
-                      backgroundColor: colors.success,
-                    }}
-                  />
-                </View>
-                <AppText size={13} color={colors.muted}>
-                  {str("meter.next_tier", {
-                    missing: nextTier.doors - doors,
-                    bonus: nextTier.bonus_units_all,
-                  })}
-                </AppText>
-              </>
-            ) : reachedTier ? (
-              <AppText size={13} color={colors.success}>
-                {str("meter.tier_reached", {
-                  doors: reachedTier.doors,
-                  bonus: reachedTier.bonus_units_all,
-                })}
-              </AppText>
-            ) : null}
+  const pendingRoll = rolls?.find((r) => r.status === "ordered") ?? null;
+  const latestDelivered = rolls?.find((r) => r.status === "delivered") ?? null;
+  const unitsUsed = myState?.subscription?.units_used ?? 0;
+  /** rough bags-left estimate: latest delivered roll minus this month's use */
+  const leftInRoll = latestDelivered
+    ? Math.max(0, latestDelivered.roll_count - unitsUsed)
+    : null;
+
+  const rules: { key: string; text: string }[] = [
+    { key: "tied", text: str("bags.rule_tied") },
+    { key: "weight", text: str("bags.rule_weight", { kg: unitRules.max_kg_per_unit }) },
+    {
+      key: "oversized",
+      text: str("bags.rule_oversized", { mult: unitRules.oversized_multiplier }),
+    },
+    { key: "leak", text: str("bags.rule_leak") },
+  ];
+
+  return (
+    <Screen
+      title={str("bags.title")}
+      refreshing={refreshing}
+      onRefresh={() => void onRefresh()}
+    >
+      <View style={{ gap: spacing.lg }}>
+        {/* roll status */}
+        {rolls === null ? (
+          <SkeletonList rows={1} height={92} />
+        ) : (
+          <Card big style={{ gap: spacing.sm }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+              <View
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 12,
+                  backgroundColor: colors.mint,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons
+                  name={pendingRoll ? "cube-outline" : "bag-handle-outline"}
+                  size={21}
+                  color={colors.greenDeep}
+                />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                {pendingRoll ? (
+                  <>
+                    <AppText weight="heavy" size={15}>
+                      {str("bags.next_roll")}
+                    </AppText>
+                    <AppText size={12} color={colors.muted}>
+                      {str("usage.order_roll_note")}
+                    </AppText>
+                  </>
+                ) : leftInRoll !== null ? (
+                  <AppText weight="heavy" size={15}>
+                    {str("bags.left_in_roll", { count: leftInRoll })}
+                  </AppText>
+                ) : (
+                  <AppText weight="heavy" size={15}>
+                    {str("bags.next_roll")}
+                  </AppText>
+                )}
+              </View>
+              {latestDelivered ? (
+                <MonoText weight="heavy" size={18} color={colors.greenDeep}>
+                  {leftInRoll ?? latestDelivered.roll_count}
+                </MonoText>
+              ) : null}
+            </View>
           </Card>
-        ) : null}
+        )}
+
+        {/* what counts as a bag */}
+        <Card style={{ gap: spacing.md }}>
+          <AppText weight="heavy" size={16}>
+            {str("bags.rules_title")}
+          </AppText>
+          {rules.map((rule) => (
+            <View
+              key={rule.key}
+              style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}
+            >
+              <View
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 99,
+                  backgroundColor: colors.mint,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginTop: 1,
+                }}
+              >
+                <Ionicons name="checkmark" size={12} color={colors.greenDeep} />
+              </View>
+              <AppText size={13.5} color={colors.text2} style={{ flex: 1, lineHeight: 20 }}>
+                {rule.text}
+              </AppText>
+            </View>
+          ))}
+        </Card>
+
+        {/* building meter + invite tie-in */}
+        <BuildingMeterCard
+          footer={
+            <Button
+              label={str("meter.invite_cta")}
+              onPress={() => router.push("/(resident)/(tabs)/invite")}
+              compact
+              style={{ marginTop: spacing.xs }}
+            />
+          }
+        />
       </View>
     </Screen>
   );

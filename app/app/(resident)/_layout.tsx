@@ -2,7 +2,7 @@ import { Stack } from "expo-router";
 import React from "react";
 import { colors } from "@/ui/theme";
 
-/** Resident shell: tabs + the submit sheet presented modally above them. */
+/** Resident shell: tabs + the submit sheet (modal) + settings (pushed). */
 export default function ResidentLayout() {
   return (
     <Stack
@@ -12,7 +12,11 @@ export default function ResidentLayout() {
       }}
     >
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="submit" options={{ presentation: "modal" }} />
+      <Stack.Screen
+        name="submit"
+        options={{ presentation: "modal", gestureEnabled: true }}
+      />
+      <Stack.Screen name="settings" />
     </Stack>
   );
 }

@@ -1,26 +1,30 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Switch, View } from "react-native";
+import { View } from "react-native";
 import { LANGUAGE_ENDONYMS, LOCALES } from "@/lib/locales";
 import { routeForState } from "@/lib/routing";
 import { rpc } from "@/lib/supabase";
 import type { Locale, MyStateUser } from "@/lib/types";
-import { useAppState, useStr } from "@/state/AppState";
-import { PCard, PChip, PConfirmButton, PScreen } from "@/ui/PickerUI";
+import { useAppState, useConfig, useStr } from "@/state/AppState";
+import { PAvailabilityPill, PCard, PChip, PConfirmButton, PScreen } from "@/ui/PickerUI";
 import { pickerColors as pc, spacing } from "@/ui/theme";
-import { AppText } from "@/ui/Text";
+import { AppText, MonoText } from "@/ui/Text";
 import { useRpcErrorToast } from "@/ui/Toast";
 
-/** Settings-lite for picker mode: availability, language, switch back. */
-export default function PickerSettings() {
+/** Profile tab: availability, strikes, language, mode switch, sign out. */
+export default function PickerProfile() {
   const str = useStr();
   const router = useRouter();
   const rpcErrorToast = useRpcErrorToast();
-  const { myState, refresh, patchUser, patchPicker } = useAppState();
+  const { myState, refresh, patchUser, patchPicker, signOut } = useAppState();
+  const maxStrikes = useConfig("strikes_to_suspend");
   const [modeBusy, setModeBusy] = useState(false);
 
   const user = myState?.user ?? null;
-  const available = myState?.picker?.available ?? false;
+  const picker = myState?.picker ?? null;
+  const available = picker?.available ?? false;
+  const strikes = picker?.strikes ?? 0;
 
   const toggleAvailability = async (value: boolean) => {
     patchPicker({ available: value }); // optimistic
@@ -59,8 +63,8 @@ export default function PickerSettings() {
   };
 
   return (
-    <PScreen title={str("settings.title")}>
-      <View style={{ gap: spacing.lg }}>
+    <PScreen title={str("profile.tab")}>
+      <View style={{ gap: spacing.md }}>
         {/* availability */}
         <PCard
           style={{
@@ -70,20 +74,31 @@ export default function PickerSettings() {
             gap: spacing.sm,
           }}
         >
-          <AppText weight="medium" size={15} color={pc.text} style={{ flexShrink: 1 }}>
-            {str("feed.available_toggle")}
-          </AppText>
-          <Switch
-            value={available}
-            onValueChange={(v) => void toggleAvailability(v)}
-            trackColor={{ false: pc.line, true: pc.success }}
-            thumbColor={pc.paper}
+          <MonoText weight="bold" size={14} color={pc.text} numberOfLines={1} style={{ flexShrink: 1 }}>
+            {user?.phone ?? ""}
+          </MonoText>
+          <PAvailabilityPill
+            label={str("feed.available_toggle")}
+            on={available}
+            onToggle={(v) => void toggleAvailability(v)}
           />
+        </PCard>
+
+        {/* strikes */}
+        <PCard style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <Ionicons
+            name="warning-outline"
+            size={19}
+            color={strikes > 0 ? pc.danger : pc.faint}
+          />
+          <AppText size={13.5} color={strikes > 0 ? pc.danger : pc.muted} style={{ flex: 1 }}>
+            {str("earnings.strikes", { count: strikes, max: maxStrikes })}
+          </AppText>
         </PCard>
 
         {/* language */}
         <PCard style={{ gap: spacing.sm }}>
-          <AppText weight="bold" size={16} color={pc.text}>
+          <AppText weight="heavy" size={15} color={pc.text}>
             {str("settings.language")}
           </AppText>
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
@@ -99,13 +114,18 @@ export default function PickerSettings() {
           </View>
         </PCard>
 
-        {/* back to resident mode */}
-        <PCard>
+        {/* switch back + sign out */}
+        <PCard style={{ gap: spacing.sm }}>
           <PConfirmButton
             label={str("settings.switch_mode_resident")}
-            kind="amber"
+            kind="green"
             onPress={() => void backToResident()}
             loading={modeBusy}
+          />
+          <PConfirmButton
+            label={str("settings.sign_out")}
+            kind="danger"
+            onPress={() => void signOut()}
           />
         </PCard>
       </View>

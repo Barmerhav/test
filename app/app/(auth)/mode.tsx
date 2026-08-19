@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { routeForState } from "@/lib/routing";
 import { rpc } from "@/lib/supabase";
 import type { MyStateUser, UserMode } from "@/lib/types";
 import { useAppState, useStr } from "@/state/AppState";
+import { Pressy } from "@/ui/Pressy";
 import { Screen } from "@/ui/Screen";
 import { colors, radii, shadow, spacing } from "@/ui/theme";
 import { AppText } from "@/ui/Text";
@@ -43,28 +44,39 @@ export default function ModeScreen() {
     <Screen title={str("auth.mode_title")}>
       <View style={{ gap: spacing.lg }}>
         {cards.map((card) => (
-          <Pressable
+          <Pressy
             key={card.mode}
             accessibilityRole="button"
             disabled={busy !== null}
             onPress={() => void choose(card.mode)}
-            style={({ pressed }) => ({
+            haptic="medium"
+            style={{
               backgroundColor: colors.card,
-              borderRadius: radii.card,
-              borderWidth: 1,
-              borderColor: pressed || busy === card.mode ? colors.accent : colors.line,
+              borderRadius: radii.cardBig,
+              borderWidth: 1.5,
+              borderColor: busy === card.mode ? colors.green : colors.lineSoft,
               padding: spacing.xl,
               alignItems: "center",
               gap: spacing.md,
-              opacity: pressed ? 0.9 : 1,
               ...shadow,
-            })}
+            }}
           >
-            <Ionicons name={card.icon} size={44} color={colors.ink} />
-            <AppText weight="bold" size={18} center>
+            <View
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 99,
+                backgroundColor: colors.mint,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name={card.icon} size={30} color={colors.greenDeep} />
+            </View>
+            <AppText weight="heavy" size={16.5} center style={{ lineHeight: 24 }}>
               {card.label}
             </AppText>
-          </Pressable>
+          </Pressy>
         ))}
       </View>
     </Screen>
