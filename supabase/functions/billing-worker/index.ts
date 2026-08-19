@@ -30,6 +30,9 @@ Deno.serve(
     if (providerName !== "mock") return json({ error: "real PSP billing not wired yet" }, 501);
     const outcome = ((cfg.mock_payment ?? {}) as { outcome?: string }).outcome === "fail" ? "charge.failed" : "charge.settled";
 
+    // 0) past_due subscriptions get a fresh retry charge (picked up below)
+    const { data: retried } = await svc.schema("api").rpc("service_retry_failed_renewals");
+
     // 1) pending charges: fresh renewals (no provider id yet) AND stuck ones
     //    whose settlement webhook never landed (provider id set, >3 min old)
     const staleCutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
@@ -71,6 +74,6 @@ Deno.serve(
       refundsProcessed++;
     }
 
-    return json({ charges: chargesProcessed, refunds: refundsProcessed });
+    return json({ charges: chargesProcessed, refunds: refundsProcessed, renewalsRetried: retried ?? 0 });
   }),
 );
