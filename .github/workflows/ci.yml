@@ -33,6 +33,11 @@ jobs:
           CONF
           sudo pg_ctlcluster 16 main restart
           sudo -u postgres psql -qc "alter user postgres password 'postgres'"
+      - name: Reset + migrate test database
+        # ci-db-reset.sh switches to the postgres system user via `su`, which
+        # needs root — the runner user cannot su, so the reset happens here and
+        # the test step skips its built-in reset.
+        run: sudo bash scripts/ci-db-reset.sh pinui_test
       - name: Config seed anti-drift
         run: |
           pnpm gen:config-seed
@@ -40,7 +45,7 @@ jobs:
       - name: Unit tests
         run: pnpm test:unit
       - name: DB tests
-        run: pnpm test:db
+        run: SKIP_DB_RESET=1 pnpm test:db
       - name: Demo CLI smoke (fresh DB)
         run: |
           sudo bash scripts/ci-db-reset.sh pinui_test
