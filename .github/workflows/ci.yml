@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit + DB tests (plain PG16)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Set up Postgres 16 + pg_cron
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-16 postgresql-16-cron
+          sudo tee -a /etc/postgresql/16/main/postgresql.conf > /dev/null <<'CONF'
+          shared_preload_libraries = 'pg_cron'
+          cron.database_name = 'pinui_test'
+          CONF
+          sudo pg_ctlcluster 16 main restart
+          sudo -u postgres psql -qc "alter user postgres password 'postgres'"
+      - name: Config seed anti-drift
+        run: |
+          pnpm gen:config-seed
+          git diff --exit-code -- supabase/seeds/01_config.sql
+      - name: Unit tests
+        run: pnpm test:unit
+      - name: DB tests
+        run: pnpm test:db
+      - name: Demo CLI smoke (fresh DB)
+        run: |
+          sudo bash scripts/ci-db-reset.sh pinui_test
+          pnpm exec tsx scripts/demo-cli.ts
+
+  typecheck:
+    name: Typecheck + admin build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck app
+        run: pnpm --filter app exec tsc --noEmit
+      - name: Typecheck admin
+        run: pnpm --filter admin exec tsc --noEmit
+      - name: Build admin
+        run: pnpm --filter admin build
