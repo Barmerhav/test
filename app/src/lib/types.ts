@@ -41,6 +41,8 @@ export interface MySubscription {
   next_reset_at: string | null;
   bag_format: BagFormat;
   plan: MyStatePlan;
+  /** a downgrade scheduled to apply at the next renewal (null = none) */
+  pending_plan?: { id: string; code: string; units_per_month: number } | null;
   /** a newer active_for_signup version of the same plan code exists */
   newer_plan_version: boolean;
 }

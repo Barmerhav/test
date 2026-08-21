@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Linking, Modal, View } from "react-native";
 import { countUnits } from "@pinui/shared";
 import { base64ToArrayBuffer } from "@/lib/base64";
@@ -15,6 +15,7 @@ import type {
 } from "@/lib/types";
 import { useAppState, useConfig, useStr } from "@/state/AppState";
 import { PButton, PCard, PScreen } from "@/ui/PickerUI";
+import { QueryState } from "@/ui/QueryState";
 import { fireHaptic, Pressy } from "@/ui/Pressy";
 import { PICKER_TAP, pickerColors as pc, radii, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
@@ -39,6 +40,7 @@ export default function CollectScreen() {
   const [ticked, setTicked] = useState<boolean[]>([]);
   const [oversized, setOversized] = useState<boolean[]>([]);
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   // leak flow
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -49,17 +51,33 @@ export default function CollectScreen() {
   const load = useCallback(async () => {
     if (!claimId) return;
     const cRes = await supabase.from("claims").select("*").eq("id", claimId).limit(1);
+    // a failed query at the door must show a retry, never a dead screen
+    if (cRes.error) {
+      setLoadError(true);
+      return;
+    }
     const c = ((cRes.data ?? []) as ClaimRow[])[0] ?? null;
     setClaim(c);
-    if (!c) return;
+    if (!c) {
+      setLoadError(true);
+      return;
+    }
     const rRes = await supabase
       .from("requests")
       .select("id,units_requested,notes,residency_id,building_id,status")
       .eq("id", c.request_id)
       .limit(1);
+    if (rRes.error) {
+      setLoadError(true);
+      return;
+    }
     const r = ((rRes.data ?? []) as StopRequestRow[])[0] ?? null;
     setRequest(r);
-    if (!r) return;
+    if (!r) {
+      setLoadError(true);
+      return;
+    }
+    setLoadError(false);
     setTicked(Array.from({ length: r.units_requested }, () => false));
     setOversized(Array.from({ length: r.units_requested }, () => false));
     const [resRes, bRes] = await Promise.all([
@@ -79,9 +97,12 @@ export default function CollectScreen() {
     if (b) setStreet(`${b.street} ${b.house_number}`);
   }, [claimId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // reload on every focus — the claim can advance while this screen is away
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   const oversizedCount = oversized.filter(Boolean).length;
   const tickedCount = ticked.filter(Boolean).length;
@@ -171,6 +192,14 @@ export default function CollectScreen() {
       setCapturing(false);
     }
   };
+
+  if (loadError && !request) {
+    return (
+      <PScreen scroll={false} title={str("collect.title", { street: "" })} contentStyle={{ justifyContent: "center" }}>
+        <QueryState loading={false} error onRetry={() => void load()} dark />
+      </PScreen>
+    );
+  }
 
   return (
     <PScreen

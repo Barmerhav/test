@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AppState as RNAppState,
   Linking,
@@ -31,7 +31,7 @@ interface StopData {
   claims: ClaimRow[];
   requests: Map<string, StopRequestRow>;
   residencies: Map<string, StopResidencyRow>;
-  building: StopBuildingRow | null;
+  buildings: Map<string, StopBuildingRow>;
 }
 
 /** Poll cadence while the stop screen is focused (confirm-first unlocks). */
@@ -86,7 +86,7 @@ export default function StopScreen() {
     setLoadError(false);
     const claims = (claimsRes.data ?? []) as ClaimRow[];
     if (claims.length === 0) {
-      setData({ claims: [], requests: new Map(), residencies: new Map(), building: null });
+      setData({ claims: [], requests: new Map(), residencies: new Map(), buildings: new Map() });
       return;
     }
     const requestIds = claims.map((c) => c.request_id);
@@ -112,9 +112,10 @@ export default function StopScreen() {
     ]);
     const residencies = new Map<string, StopResidencyRow>();
     for (const r of (resRes.data ?? []) as StopResidencyRow[]) residencies.set(r.id, r);
-    const building = ((bldRes.data ?? []) as StopBuildingRow[])[0] ?? null;
+    const buildings = new Map<string, StopBuildingRow>();
+    for (const b of (bldRes.data ?? []) as StopBuildingRow[]) buildings.set(b.id, b);
 
-    setData({ claims, requests, residencies, building });
+    setData({ claims, requests, residencies, buildings });
   }, [uid]);
 
   // refetch on focus + poll while focused + resync on app foreground, so
@@ -139,8 +140,39 @@ export default function StopScreen() {
     setRefreshing(false);
   };
 
-  const claims = data?.claims ?? [];
-  const building = data?.building ?? null;
+  // A stop is ONE claim group (= one building). With max_active_claim_groups
+  // raised above 1, mixing groups here would show the wrong building header,
+  // reveal the wrong entry code, and block cross-building scans — so scope
+  // everything to one group, earliest deadline first, with a switcher.
+  const allClaims = data?.claims ?? [];
+  const groups = useMemo(() => {
+    const byGroup = new Map<string, ClaimRow[]>();
+    for (const c of allClaims) {
+      const arr = byGroup.get(c.claim_group_id) ?? [];
+      arr.push(c);
+      byGroup.set(c.claim_group_id, arr);
+    }
+    return [...byGroup.entries()]
+      .map(([id, cs]) => ({
+        id,
+        claims: cs,
+        minDeadline: Math.min(...cs.map((c) => new Date(c.deadline_at).getTime())),
+      }))
+      .sort((a, b) => a.minDeadline - b.minDeadline);
+  }, [allClaims]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const activeGroup = groups.find((g) => g.id === activeGroupId) ?? groups[0] ?? null;
+  const claims = useMemo(() => activeGroup?.claims ?? [], [activeGroup]);
+  const building = useMemo(() => {
+    const first = claims[0];
+    const req = first ? data?.requests.get(first.request_id) : undefined;
+    return req ? (data?.buildings.get(req.building_id) ?? null) : null;
+  }, [claims, data]);
+
+  // a revealed code belongs to ONE building — never carry it across groups
+  useEffect(() => {
+    setReveal(null);
+  }, [activeGroup?.id]);
 
   const minDeadline = useMemo(() => {
     let min: number | null = null;
@@ -237,7 +269,7 @@ export default function StopScreen() {
     );
   }
 
-  if (claims.length === 0) {
+  if (allClaims.length === 0) {
     return (
       <PScreen scroll={false} title={str("stop.title")} contentStyle={{ justifyContent: "center" }}>
         <View style={{ alignItems: "center", gap: spacing.md }}>
@@ -270,6 +302,37 @@ export default function StopScreen() {
           />
         }
       >
+        {/* more than one active stop (config max_active_claim_groups > 1) */}
+        {groups.length > 1 ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md }}>
+            {groups.map((g) => {
+              const gReq = g.claims[0] ? data?.requests.get(g.claims[0].request_id) : undefined;
+              const gBld = gReq ? data?.buildings.get(gReq.building_id) : undefined;
+              const selected = g.id === (activeGroup?.id ?? "");
+              return (
+                <Pressy
+                  key={g.id}
+                  accessibilityRole="button"
+                  onPress={() => setActiveGroupId(g.id)}
+                  haptic="light"
+                  style={{
+                    borderRadius: radii.pill,
+                    borderWidth: 1.5,
+                    borderColor: selected ? pc.green : pc.lineStrong,
+                    backgroundColor: selected ? pc.glowSoft : "transparent",
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                  }}
+                >
+                  <AppText weight="bold" size={12.5} color={selected ? pc.money : pc.muted}>
+                    {`${gBld ? `${gBld.street} ${gBld.house_number}` : "…"} · ${g.claims.length}`}
+                  </AppText>
+                </Pressy>
+              );
+            })}
+          </View>
+        ) : null}
+
         {/* header: street + meta + navigate */}
         <View
           style={{

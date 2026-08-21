@@ -177,7 +177,8 @@ export default function AddressScreen() {
             <Field
               value={entryCode}
               onChangeText={setEntryCode}
-              keyboardType="number-pad"
+              // codes often contain # or * — number-pad cannot type them
+              keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "default"}
               mono
               autoFocus
             />

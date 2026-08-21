@@ -1,13 +1,14 @@
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
-import { formatILS } from "@pinui/shared";
+import { formatILS, shekelsToAgorot } from "@pinui/shared";
 import { PaymentSheet } from "@/components/PaymentSheet";
 import { perUnitAgorot } from "@/components/UpgradeSheet";
+import { chargeOnDemand, waitForActiveRequest } from "@/lib/payments";
 import { recommendPlan } from "@/lib/recommendPlan";
 import { rpc } from "@/lib/supabase";
 import type { BagFormat, MySubscription, PlanRow } from "@/lib/types";
-import { useAppState, useStr } from "@/state/AppState";
+import { useAppState, useConfig, useStr } from "@/state/AppState";
 import { Button } from "@/ui/Button";
 import { Chip } from "@/ui/Chip";
 import { Pressy } from "@/ui/Pressy";
@@ -15,23 +16,22 @@ import { QueryState } from "@/ui/QueryState";
 import { Screen } from "@/ui/Screen";
 import { colors, radii, shadow, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
-import { useRpcErrorToast } from "@/ui/Toast";
+import { useRpcErrorToast, useToast } from "@/ui/Toast";
 
-/** Tailoring chips per artboard 02 — survey ranges with weekly midpoints
- * (the recommendation math lives in src/lib/recommendPlan.ts). */
-const HOUSEHOLD_CHIPS = ["1–2", "3–4", "5+"] as const;
-const BAGS_WEEK_CHIPS: { label: string; midpoint: number }[] = [
-  { label: "2–3", midpoint: 2.5 },
-  { label: "4–6", midpoint: 5 },
-  { label: "7+", midpoint: 8 },
-];
+/** "2–3" / "7+" chip label from a config range (numeric, not translatable). */
+const rangeLabel = (o: { min: number; max: number | null }): string =>
+  o.max === null ? `${o.min}+` : `${o.min}–${o.max}`;
 
 /** Plan picker per artboard 02: two questions, one pre-selected answer. */
 export default function PlanScreen() {
   const str = useStr();
   const router = useRouter();
   const rpcErrorToast = useRpcErrorToast();
+  const { show } = useToast();
   const { plans, myState, refresh, refreshPlans } = useAppState();
+  // survey ranges + midpoints/factors are config, not code (prime directive)
+  const survey = useConfig("plan_survey");
+  const onDemand = useConfig("on_demand_single");
 
   const [household, setHousehold] = useState<number | null>(null);
   const [bagsIdx, setBagsIdx] = useState<number | null>(null);
@@ -40,6 +40,7 @@ export default function PlanScreen() {
   const [starting, setStarting] = useState(false);
   const [paySubId, setPaySubId] = useState<string | null>(null);
   const [payPrice, setPayPrice] = useState<number | null>(null);
+  const [odOpen, setOdOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const signupPlans = useMemo(
@@ -64,10 +65,13 @@ export default function PlanScreen() {
 
   const recommended = useMemo(() => {
     if (bagsIdx === null) return null;
-    const midpoint = BAGS_WEEK_CHIPS[bagsIdx]?.midpoint;
+    const midpoint = survey.bags_week[bagsIdx]?.midpoint;
     if (midpoint === undefined) return null;
-    return recommendPlan(signupPlans, midpoint);
-  }, [bagsIdx, signupPlans]);
+    // household size scales the weekly estimate by its config factor
+    const factor =
+      household !== null ? (survey.household[household]?.factor ?? 1) : 1;
+    return recommendPlan(signupPlans, midpoint * factor);
+  }, [bagsIdx, household, survey, signupPlans]);
 
   // pre-select the recommendation whenever the answers change
   useEffect(() => {
@@ -141,10 +145,10 @@ export default function PlanScreen() {
             {str("plan.q_household")}
           </AppText>
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
-            {HOUSEHOLD_CHIPS.map((label, i) => (
+            {survey.household.map((chip, i) => (
               <Chip
-                key={label}
-                label={label}
+                key={rangeLabel(chip)}
+                label={rangeLabel(chip)}
                 selected={household === i}
                 onPress={() => setHousehold(i)}
                 style={{ flex: 1 }}
@@ -158,10 +162,10 @@ export default function PlanScreen() {
             {str("plan.q_bags_week")}
           </AppText>
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
-            {BAGS_WEEK_CHIPS.map((chip, i) => (
+            {survey.bags_week.map((chip, i) => (
               <Chip
-                key={chip.label}
-                label={chip.label}
+                key={rangeLabel(chip)}
+                label={rangeLabel(chip)}
                 selected={bagsIdx === i}
                 onPress={() => setBagsIdx(i)}
                 style={{ flex: 1 }}
@@ -283,6 +287,44 @@ export default function PlanScreen() {
           })}
         </View>
 
+        {/* one-off pickup for non-subscribers (config-gated) */}
+        {onDemand.enabled && !myState?.subscription ? (
+          <Pressy
+            accessibilityRole="button"
+            onPress={() => setOdOpen(true)}
+            haptic="light"
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: radii.cardBig,
+              borderWidth: 1,
+              borderColor: colors.lineSoft,
+              borderStyle: "dashed",
+              padding: 18,
+              gap: 4,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <AppText weight="heavy" size={15.5}>
+                {str("plan.on_demand_title")}
+              </AppText>
+              <MonoText weight="heavy" size={18}>
+                {formatILS(shekelsToAgorot(onDemand.price))}
+              </MonoText>
+            </View>
+            <AppText size={12.5} color={colors.text2}>
+              {str("plan.on_demand_sub", {
+                price: formatILS(shekelsToAgorot(onDemand.price)),
+              })}
+            </AppText>
+          </Pressy>
+        ) : null}
+
         {/* legal: no rollover */}
         <AppText size={11.5} color={colors.faint} center>
           {str("plan.no_rollover")}
@@ -317,6 +359,24 @@ export default function PlanScreen() {
         }}
         onSuccess={() => {
           setPaySubId(null);
+          void refresh();
+          router.replace("/(resident)");
+        }}
+      />
+
+      {/* one-off pickup: charge settles via webhook → request opens server-side */}
+      <PaymentSheet
+        visible={odOpen}
+        subscriptionId={null}
+        priceAgorot={shekelsToAgorot(onDemand.price)}
+        charge={async () => {
+          await chargeOnDemand();
+          return waitForActiveRequest(20);
+        }}
+        onClose={() => setOdOpen(false)}
+        onSuccess={() => {
+          setOdOpen(false);
+          show(str("plan.on_demand_success"), "success");
           void refresh();
           router.replace("/(resident)");
         }}

@@ -644,3 +644,27 @@ insert into public.strings (key, locale, value) values
 ('error.unknown',                'en', 'Something went wrong — try again')
 
 on conflict (key, locale) do nothing;
+
+-- ── review-round-3 additions ────────────────────────────────────────────────
+insert into public.strings (key, locale, value) values
+('push.subscription_canceled.title', 'he', 'המנוי בוטל'),
+('push.subscription_canceled.title', 'en', 'Subscription canceled'),
+('push.subscription_canceled.body',  'he', 'החיוב החודשי נכשל שוב ושוב, אז ביטלנו את המנוי. אפשר להירשם מחדש בכל רגע.'),
+('push.subscription_canceled.body',  'en', 'The monthly charge kept failing, so we canceled the subscription. You can re-subscribe any time.'),
+('plan.on_demand_title',    'he', 'פינוי חד־פעמי'),
+('plan.on_demand_title',    'en', 'One-off pickup'),
+('plan.on_demand_sub',      'he', 'בלי מנוי — שקית אחת למטה תמורת {price}'),
+('plan.on_demand_sub',      'en', 'No subscription — one bag taken down for {price}'),
+('plan.on_demand_cta',      'he', 'הזמנת פינוי חד־פעמי'),
+('plan.on_demand_cta',      'en', 'Order a one-off pickup'),
+('plan.on_demand_success',  'he', 'הבקשה נפתחה! שימו את השקית ליד הדלת'),
+('plan.on_demand_success',  'en', 'Request opened! Put the bag outside your door'),
+('plan.change_at_renewal',  'he', 'המעבר ייכנס לתוקף בחידוש הבא'),
+('plan.change_at_renewal',  'en', 'The change takes effect at the next renewal'),
+('request.backstop_failed',     'he', 'החיוב נכשל — לא נשלח שליח'),
+('request.backstop_failed',     'en', 'The charge failed — no courier was sent'),
+('request.backstop_refunded',   'he', 'לא ניתן לשלוח שליח כרגע — הכסף חוזר אליכם'),
+('request.backstop_refunded',   'en', 'A courier can''t be sent right now — your money is on its way back'),
+('request.backstop_processing', 'he', 'התשלום בעיבוד — נעדכן ברגע שהשליח בדרך'),
+('request.backstop_processing', 'en', 'Payment processing — we''ll update you once the courier is on the way')
+on conflict (key, locale) do nothing;

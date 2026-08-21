@@ -23,8 +23,10 @@ export default function Buildings() {
   const [status, setStatus] = useState<string | null>(null);
 
   async function load() {
+    // bin_qr_id is no longer client-readable (it is the scan secret) —
+    // admins fetch the listing through the definer RPC instead
     const [b, m] = await Promise.all([
-      supabase.from("buildings").select("id, city, street, house_number, bin_qr_id, bin_location_note, paused").order("city").order("street"),
+      rpc.rpc("admin_list_buildings"),
       supabase.from("building_meter").select("*"),
     ]);
     setRows((b.data as Building[]) ?? []);

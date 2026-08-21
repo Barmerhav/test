@@ -17,13 +17,14 @@ import { Screen } from "@/ui/Screen";
 import { pillKindForStatus, StatusPill } from "@/ui/StatusPill";
 import { colors, spacing } from "@/ui/theme";
 import { AppText, MonoText } from "@/ui/Text";
-import { useRpcErrorToast } from "@/ui/Toast";
+import { useRpcErrorToast, useToast } from "@/ui/Toast";
 
 /** Usage per artboard 06: quota header, resets line, upgrade compare,
  * month history with status pills, extra-roll card. */
 export default function UsageScreen() {
   const str = useStr();
   const rpcErrorToast = useRpcErrorToast();
+  const { show } = useToast();
   const { myState, plans, locale, session, refresh, refreshPlans } = useAppState();
   const extraRoll = useConfig("extra_roll");
 
@@ -114,6 +115,10 @@ export default function UsageScreen() {
       await rpc("change_plan", { p_plan_id: plan.id });
       await refresh();
       void fireHaptic("success");
+      // downgrades are scheduled server-side for the next renewal — say so
+      if (sub && plan.units_per_month <= sub.plan.units_per_month) {
+        show(str("plan.change_at_renewal"), "success");
+      }
     } catch (err) {
       rpcErrorToast(err);
     } finally {

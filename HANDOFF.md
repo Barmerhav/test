@@ -1,26 +1,14 @@
-# HANDOFF — Lemata (למטה) MVP · session 2026-08-19
+# HANDOFF — Lemata (למטה) MVP · sessions 2026-08-19 → 2026-08-21
 
 Complete state document for continuing this project in a fresh Claude Code
 session. Read this end-to-end before touching anything.
 
-## ⚠️ First things first: the code lives in the bundle, not on GitHub
+## Where the code lives
 
-GitHub `barmerhav/test` is **EMPTY** — every push attempt returned 403 all
-session (the Claude GitHub App has read-only access; fix is claude.ai →
-Settings → Connectors → GitHub → grant write to `test`). The entire project
-(15 commits on branch `claude/trash-pickup-marketplace-mvp-2q8kzb`) was handed
-to the founder as `lemata.bundle`. To restore in a fresh clone of the empty repo:
-
-```bash
-git fetch /path/to/lemata.bundle claude/trash-pickup-marketplace-mvp-2q8kzb:claude/trash-pickup-marketplace-mvp-2q8kzb
-git checkout claude/trash-pickup-marketplace-mvp-2q8kzb
-pnpm install
-```
-
-Once GitHub write access exists: `git push -u origin claude/trash-pickup-marketplace-mvp-2q8kzb`,
-then open a **draft PR** (the default branch may need bootstrapping first —
-create `main` with a one-line README via the API if the repo has no branches),
-then `subscribe_pr_activity`.
+GitHub `barmerhav/test`: branch `claude/trash-pickup-marketplace-mvp-2q8kzb`,
+**draft PR #1 → main** (main is a bootstrap README). CI (GitHub Actions) runs
+the full harness on every PR/main push, and `.claude/hooks/session-start.sh`
+rebuilds the local test harness automatically in Claude Code web sessions.
 
 ## What this is
 
@@ -68,19 +56,26 @@ deadlines, VAT) so config edits never touch in-flight work.
 
 - `pnpm test:unit` — 44 tests (unit counting truth table, money/VAT, FIFO,
   state map, config schemas).
-- `pnpm test:db` — 89 tests incl. claim race, payout double-run race,
+- `pnpm test:db` — 109 tests incl. claim race, payout double-run race,
   config-change-mid-flight snapshots, SQL↔TS anti-drift, no-show ladder,
-  hardening regressions. Runs on plain Postgres 16 via
+  hardening + review-round-3 regressions. Runs on plain Postgres 16 via
   `scripts/ci-db-reset.sh` + `supabase/tests/shim.sql` (Docker images are
   BLOCKED by this environment's proxy; on the founder's machine use
   `supabase start` + `SKIP_DB_RESET=1 TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54322/postgres`).
 - `tsc --noEmit` strict-clean in `app/` and `admin/`; `pnpm --filter admin build` ok.
-- Two adversarial review rounds completed and ALL confirmed findings fixed:
+- THREE adversarial review rounds completed and ALL confirmed findings fixed:
   backend (20: payout double-pay race, anon cancel bypass, PUBLIC-execute
   default, pause free-month, stranded collected state → scan_grace
-  auto-complete, retryable failed charges…) and app (26: OTP stale-session
+  auto-complete, retryable failed charges…), app (26: OTP stale-session
   routing, pending_payment lockout, blank-boot retry, stop refetch, toasts
-  over modals, RTL first-launch reload…).
+  over modals, RTL first-launch reload…), and round 3 (31, fixed in migration
+  `00160_review3_fixes.sql` + app/admin/edge patches: mark_collected payout
+  clamp, entry-code first-set authz, bin_qr_id secrecy, past_due back-billing,
+  renewal retry policy via `billing_retry` config, plan-change money
+  (`pending_plan_id`), forced-transition refunds, kill-switch gating of
+  on-demand, per-request boost, meter/referral races, outbox claiming, CSV/
+  HTML injection in payout-export + its authz, plan-survey config, on-demand
+  UI entry point).
 - Live demo of the real engine: `pnpm exec tsx scripts/demo-cli.ts` (after
   ci-db-reset) — narrated full loop incl. payout + invoice.
 
@@ -99,12 +94,11 @@ deadlines, VAT) so config edits never touch in-flight work.
 
 ## Open items (in priority order)
 
-1. **Push + draft PR + subscribe_pr_activity** — blocked only on the GitHub
-   write grant. User said STOP auto-retrying; act only when they ask.
-2. Founder-machine validation: `supabase start && supabase db reset`,
+1. Founder-machine validation: `supabase start && supabase db reset`,
    `pnpm gen:types` (regenerate `packages/shared/src/types/database.types.ts`
    — currently a placeholder), `pnpm e2e:demo`, run the Expo dev build
    (RTL requires a dev build, not Expo Go).
+2. Merge decision on draft PR #1 (flip to ready when the founder is happy).
 3. Deferred by design: real PSP adapter (PayPlus/Cardcom/Tranzila) behind the
    existing `PaymentProvider` interface; real SMS gateway in sms-hook;
    headless-PDF invoices (currently print-ready RTL HTML); feed realtime
@@ -113,3 +107,6 @@ deadlines, VAT) so config edits never touch in-flight work.
 4. Small notes: `earnings.payout_schedule` day is derived (last payout + 7d);
    supermarket-price compare on plan cards omitted (no config key); courier
    name/distance not shown to residents (RLS doesn't expose it — deliberate).
+   Downgrades now apply at the next renewal (`pending_plan_id`; upgrades are
+   immediate + difference charged) — surface the scheduled change in the app
+   UI beyond the usage-tab toast if the founder wants more visibility.

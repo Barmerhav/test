@@ -10,7 +10,7 @@
  * POST { batch_id? } — defaults to the latest 'created' batch.
  */
 import { formatILS } from "../../../packages/shared/src/money/index.ts";
-import { HttpError, handle, json, readString, serviceClient } from "../_shared/env.ts";
+import { HttpError, handle, json, readString, requireAdmin, serviceClient } from "../_shared/env.ts";
 
 interface BatchPayload {
   batch: { id: string; period_end: string; run_at: string } | null;
@@ -29,9 +29,21 @@ interface BatchPayload {
 }
 
 function csvEscape(v: unknown): string {
-  const s = v === null || v === undefined ? "" : String(v);
+  let s = v === null || v === undefined ? "" : String(v);
+  // defuse spreadsheet formula injection from picker-controlled text fields
+  // (OWASP: prefix cells starting with = + - @ or tab/CR with a quote)
+  if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
+
+/** HTML-escape DB-derived values interpolated into the invoice template. */
+const esc = (v: unknown): string =>
+  String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 function buildCsv(p: BatchPayload): string {
   const header = "payout_id,picker_name,phone,tax_status,vat_id,bank,branch,account,units,amount_exvat_agorot,vat_agorot,total_agorot,invoice_number";
@@ -91,7 +103,7 @@ async function buildInvoiceHtml(row: BatchPayload["payouts"][number], appName: s
     : "";
   const taxLabel = await readString(`picker.tax_${inv.tax_status_snapshot}`).catch(() => inv.tax_status_snapshot);
   const dealer = row.picker.vat_id
-    ? " · " + fill(s["invoice.vat_dealer"]!, { vat_id: row.picker.vat_id })
+    ? " · " + fill(s["invoice.vat_dealer"]!, { vat_id: esc(row.picker.vat_id) })
     : "";
   return `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <title>${inv.invoice_number}</title>
@@ -104,9 +116,9 @@ async function buildInvoiceHtml(row: BatchPayload["payouts"][number], appName: s
  .total td{font-weight:700;background:#faf7ee}
  @media print {.noprint{display:none}}
 </style></head><body>
-<h1>${s["invoice.title"]} · ${inv.invoice_number}</h1>
-<p class="muted">${appName} · ${s["invoice.issued_note"]} · ${p.period_end}</p>
-<p>${s["invoice.supplier"]}: ${row.picker.full_name ?? row.picker.phone} · ${taxLabel}${dealer}</p>
+<h1>${s["invoice.title"]} · ${esc(inv.invoice_number)}</h1>
+<p class="muted">${esc(appName)} · ${s["invoice.issued_note"]} · ${esc(p.period_end)}</p>
+<p>${s["invoice.supplier"]}: ${esc(row.picker.full_name ?? row.picker.phone)} · ${esc(taxLabel)}${dealer}</p>
 <table>
 <tr><th>${s["invoice.col_item"]}</th><th>${s["invoice.col_amount"]}</th></tr>
 <tr><td>${fill(s["invoice.line_pickups"]!, { units: p.total_units })}</td><td class="num">${money(p.amount_exvat_agorot)}</td></tr>
@@ -119,6 +131,8 @@ ${vatLine}
 
 Deno.serve(
   handle(async (req) => {
+    // bank-detail exports + invoices: cron (service key) or a signed-in admin
+    await requireAdmin(req);
     const svc = serviceClient();
     const body = req.method === "POST" ? ((await req.json().catch(() => ({}))) as { batch_id?: string }) : {};
 

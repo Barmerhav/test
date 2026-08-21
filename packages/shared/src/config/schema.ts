@@ -253,6 +253,49 @@ export const configEntries = {
     "Asia/Jerusalem",
     "IANA timezone used to resolve TTL cutoff times and daily jobs.",
   ),
+  billing_retry: entry(
+    z.object({
+      max_attempts: positiveInt,
+      min_hours_between: nonNegInt,
+    }),
+    { max_attempts: 4, min_hours_between: 24 },
+    "Failed-renewal retry policy: a past_due subscription is re-charged at most once every min_hours_between hours, up to max_attempts failed attempts — then the subscription is canceled (zero-touch, resident notified).",
+  ),
+  plan_survey: entry(
+    z.object({
+      bags_week: z
+        .array(
+          z.object({
+            min: positiveInt,
+            max: positiveInt.nullable(),
+            midpoint: z.number().positive(),
+          }),
+        )
+        .min(1),
+      household: z
+        .array(
+          z.object({
+            min: positiveInt,
+            max: positiveInt.nullable(),
+            factor: z.number().positive(),
+          }),
+        )
+        .min(1),
+    }),
+    {
+      bags_week: [
+        { min: 2, max: 3, midpoint: 2.5 },
+        { min: 4, max: 6, midpoint: 5 },
+        { min: 7, max: null, midpoint: 8 },
+      ],
+      household: [
+        { min: 1, max: 2, factor: 0.75 },
+        { min: 3, max: 4, factor: 1 },
+        { min: 5, max: null, factor: 1.3 },
+      ],
+    },
+    "Plan-recommendation survey on the plan screen: bags_week chips are weekly bag-count ranges (midpoint drives the estimate); household chips multiply the estimate by factor. Chip labels render from min/max (e.g. 2–3, 7+). max=null means open-ended.",
+  ),
   service_enabled: entry(
     z.boolean(),
     true,

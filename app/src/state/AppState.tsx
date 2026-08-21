@@ -120,39 +120,70 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     if (!error && data) setPlans(data as PlanRow[]);
   }, []);
 
+  // One transient failure must never leave the whole session with '!key'
+  // labels and stale seed-default config: retry with backoff (capped) until
+  // config AND strings AND plans have each loaded at least once, and kick a
+  // fresh attempt when the app foregrounds while any store is still missing.
+  const hydrateOkRef = useRef({ cfg: false, str: false, plans: false });
+  const hydrateInFlightRef = useRef(false);
   useEffect(() => {
     let alive = true;
-    const hydrate = async () => {
-      const [cfgRes, strRes, planRes] = await Promise.all([
-        supabase.from("config").select("key,value"),
-        supabase.from("strings").select("key,locale,value"),
-        supabase.from("plans").select("*"),
-      ]);
-      if (!alive) return;
-      if (!cfgRes.error && cfgRes.data) {
-        const next: Record<string, unknown> = {};
-        for (const row of cfgRes.data as { key: string; value: unknown }[]) {
-          next[row.key] = row.value;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const attempt = async (n: number) => {
+      if (hydrateInFlightRef.current) return;
+      hydrateInFlightRef.current = true;
+      try {
+        const ok = hydrateOkRef.current;
+        const [cfgRes, strRes, planRes] = await Promise.all([
+          ok.cfg ? null : supabase.from("config").select("key,value"),
+          ok.str ? null : supabase.from("strings").select("key,locale,value"),
+          ok.plans ? null : supabase.from("plans").select("*"),
+        ]);
+        if (!alive) return;
+        if (cfgRes && !cfgRes.error && cfgRes.data) {
+          const next: Record<string, unknown> = {};
+          for (const row of cfgRes.data as { key: string; value: unknown }[]) {
+            next[row.key] = row.value;
+          }
+          setConfigStore(next);
+          ok.cfg = true;
         }
-        setConfigStore(next);
-      }
-      if (!strRes.error && strRes.data) {
-        const next = new Map<string, string>();
-        for (const row of strRes.data as {
-          key: string;
-          locale: string;
-          value: string;
-        }[]) {
-          next.set(stringsMapKey(row.locale, row.key), row.value);
+        if (strRes && !strRes.error && strRes.data) {
+          const next = new Map<string, string>();
+          for (const row of strRes.data as {
+            key: string;
+            locale: string;
+            value: string;
+          }[]) {
+            next.set(stringsMapKey(row.locale, row.key), row.value);
+          }
+          setStrings(next);
+          ok.str = true;
         }
-        setStrings(next);
+        if (planRes && !planRes.error && planRes.data) {
+          setPlans(planRes.data as PlanRow[]);
+          ok.plans = true;
+        }
+        if (ok.cfg && ok.str && ok.plans) {
+          setHydrated(true);
+          return;
+        }
+        timer = setTimeout(() => void attempt(n + 1), Math.min(15_000, 1000 * 2 ** n));
+      } finally {
+        hydrateInFlightRef.current = false;
       }
-      if (!planRes.error && planRes.data) setPlans(planRes.data as PlanRow[]);
-      setHydrated(true);
     };
-    void hydrate();
+
+    void attempt(0);
+    const sub = RNAppState.addEventListener("change", (next) => {
+      const ok = hydrateOkRef.current;
+      if (next === "active" && !(ok.cfg && ok.str && ok.plans)) void attempt(0);
+    });
     return () => {
       alive = false;
+      if (timer) clearTimeout(timer);
+      sub.remove();
     };
   }, []);
 

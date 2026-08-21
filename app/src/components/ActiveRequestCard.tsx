@@ -223,15 +223,39 @@ export function ActiveRequestCard({ request }: { request: RequestRow }) {
   const sendBackstop = async () => {
     setBackstopBusy(true);
     try {
-      await chargeBackstop(request.id);
-      // settlement arrives via webhook — give it a few beats, then resync
-      for (let i = 0; i < 5; i += 1) {
+      const out = await chargeBackstop(request.id);
+      const chargeId = typeof out.charge_id === "string" ? out.charge_id : null;
+      // settlement arrives via webhook — poll for the ACTUAL outcome instead
+      // of declaring success on a timer
+      let outcome: "ok" | "failed" | "refunded" | "pending" = "pending";
+      for (let i = 0; i < 8 && outcome === "pending"; i += 1) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         const st = await refresh();
-        if (st?.active_request) break;
+        if (st?.active_request) {
+          outcome = "ok";
+          break;
+        }
+        if (chargeId) {
+          const [{ data: ch }, { data: rf }] = await Promise.all([
+            supabase.from("charges").select("status").eq("id", chargeId).maybeSingle(),
+            supabase.from("refunds").select("id").eq("charge_id", chargeId).limit(1),
+          ]);
+          const status = (ch as { status?: string } | null)?.status;
+          if (status === "failed") outcome = "failed";
+          else if ((rf ?? []).length > 0) outcome = "refunded";
+        }
       }
-      void fireHaptic("success");
-      show(str("request.backstop_hint"), "success");
+      if (outcome === "ok") {
+        void fireHaptic("success");
+        show(str("request.backstop_hint"), "success");
+      } else if (outcome === "failed") {
+        show(str("request.backstop_failed"), "error");
+      } else if (outcome === "refunded") {
+        show(str("request.backstop_refunded"), "error");
+      } else {
+        // webhook still in flight — neutral message, never a false success
+        show(str("request.backstop_processing"), "success");
+      }
     } catch (err) {
       rpcErrorToast(err);
     } finally {

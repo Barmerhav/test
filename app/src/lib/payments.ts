@@ -62,6 +62,30 @@ export async function chargeBackstop(
   return post({ action: "charge_backstop", request_id: requestId });
 }
 
+/** One-off pickup for non-subscribers (config `on_demand_single` gates the
+ * UI); the request itself is created server-side when the charge settles. */
+export async function chargeOnDemand(
+  ttlOption?: string,
+): Promise<Record<string, unknown>> {
+  return post({ action: "charge_on_demand", ttl_option: ttlOption ?? null });
+}
+
+/**
+ * Poll api.get_my_state until an active request exists (the on-demand
+ * settlement path creates it via webhook; mock settles within seconds).
+ */
+export async function waitForActiveRequest(maxSeconds = 15): Promise<boolean> {
+  for (let i = 0; i < maxSeconds; i += 1) {
+    const { data, error } = await supabase.schema("api").rpc("get_my_state");
+    if (!error) {
+      const st = data as MyState | null;
+      if (st?.active_request) return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return false;
+}
+
 /**
  * Poll api.get_my_state until subscription.status === 'active'
  * (mock webhook settles within a couple of seconds; cap ~15s).

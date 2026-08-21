@@ -85,7 +85,7 @@ export default function Credits() {
               <label>units</label>
               <input type="number" min={1} value={units} onChange={(e) => setUnits(Number(e.target.value))} />
               <input type="text" placeholder="Note (audit log)" value={note} onChange={(e) => setNote(e.target.value)} style={{ flex: 1 }} />
-              <button className="primary" onClick={() => void grant()}>Grant</button>
+              <button className="primary" disabled={!(units >= 1)} onClick={() => void grant()}>Grant</button>
             </div>
           </>
         )}

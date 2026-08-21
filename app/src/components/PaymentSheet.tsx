@@ -19,10 +19,16 @@ import { formatILS, stringsKeyForError } from "@pinui/shared";
 export interface PaymentSheetProps {
   visible: boolean;
   subscriptionId: string | null;
-  /** monthly price of the plan being paid (drives the CTA label) */
+  /** price being paid (drives the CTA label) */
   priceAgorot: number | null;
   onClose: () => void;
   onSuccess: () => void;
+  /**
+   * Custom charge flow (e.g. one-off on-demand pickup): runs after
+   * tokenize + attach_payment_method instead of the subscription charge;
+   * resolves true on confirmed success. When set, subscriptionId is unused.
+   */
+  charge?: () => Promise<boolean>;
 }
 
 /**
@@ -36,6 +42,7 @@ export function PaymentSheet({
   priceAgorot,
   onClose,
   onSuccess,
+  charge,
 }: PaymentSheetProps) {
   const str = useStr();
   const { refresh, myState } = useAppState();
@@ -50,7 +57,7 @@ export function PaymentSheet({
   const [processing, setProcessing] = useState(false);
 
   const pay = async () => {
-    if (!subscriptionId) return;
+    if (!charge && !subscriptionId) return;
     setProcessing(true);
     try {
       // pretend the form is being validated/collected by the PSP
@@ -62,10 +69,15 @@ export function PaymentSheet({
         p_brand: card.brand,
         p_last4: card.last4,
       });
-      await payForSubscription(subscriptionId);
-      const active = await waitForSubscriptionActive();
+      let ok: boolean;
+      if (charge) {
+        ok = await charge();
+      } else {
+        await payForSubscription(subscriptionId as string);
+        ok = await waitForSubscriptionActive();
+      }
       await refresh();
-      if (active) {
+      if (ok) {
         void fireHaptic("success");
         onSuccess();
       } else {

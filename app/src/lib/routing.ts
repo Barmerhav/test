@@ -24,6 +24,11 @@ export function routeForState(st: MyState): RouteTarget {
   // pending_payment = abandoned checkout — the plan screen owns recovery
   // (it re-opens the PaymentSheet; picking a different plan restarts fresh).
   if (!st.subscription || st.subscription.status === "pending_payment") {
+    // an on-demand (no-subscription) resident with a live request follows it
+    // on HOME — the plan screen has nothing to show them mid-pickup
+    if (st.active_request) {
+      return { group: "(resident)", href: "/(resident)" };
+    }
     return { group: "(onboarding)", href: "/(onboarding)/plan" };
   }
   return { group: "(resident)", href: "/(resident)" };

@@ -121,7 +121,8 @@ Deno.serve(
         });
         if (error) throw new HttpError(400, error.message);
         await processCharge(data as ChargeSetup);
-        return json({ status: "pending" });
+        // charge_id lets the app poll its own charge row for the outcome
+        return json({ status: "pending", charge_id: (data as ChargeSetup).charge_id });
       }
 
       case "charge_backstop": {
@@ -138,7 +139,8 @@ Deno.serve(
         });
         if (error) throw new HttpError(400, error.message);
         await processCharge(data as ChargeSetup);
-        return json({ status: "pending" });
+        // charge_id lets the app poll its own charge row for the outcome
+        return json({ status: "pending", charge_id: (data as ChargeSetup).charge_id });
       }
 
       default:

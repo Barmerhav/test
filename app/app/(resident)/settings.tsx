@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Share, Switch, View } from "react-native";
+import { Platform, Share, Switch, View } from "react-native";
 import { LANGUAGE_ENDONYMS, LOCALES } from "@/lib/locales";
 import { rpc, supabase } from "@/lib/supabase";
 import type { Locale, MyStateUser } from "@/lib/types";
@@ -229,7 +229,8 @@ export default function SettingsScreen() {
                 <Field
                   value={entryCode}
                   onChangeText={setEntryCode}
-                  keyboardType="number-pad"
+                  // codes often contain # or * — number-pad cannot type them
+                  keyboardType={Platform.OS === "ios" ? "numbers-and-punctuation" : "default"}
                   mono
                   style={{ flex: 1 }}
                 />

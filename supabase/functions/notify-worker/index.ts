@@ -26,10 +26,20 @@ function interpolate(template: string, params: Record<string, unknown>): string 
   });
 }
 
+/** A crashed run may leave rows claimed as 'sending' — recover after this. */
+const STALE_CLAIM_MS = 5 * 60 * 1000;
+
 Deno.serve(
   handle(async (_req) => {
     const svc = serviceClient();
     const push = createExpoPushProvider();
+
+    // recover rows a crashed run left claimed
+    await svc
+      .from("notification_outbox")
+      .update({ status: "pending" })
+      .eq("status", "sending")
+      .lt("claimed_at", new Date(Date.now() - STALE_CLAIM_MS).toISOString());
 
     const { data: rows, error } = await svc
       .from("notification_outbox")
@@ -42,6 +52,15 @@ Deno.serve(
     let sent = 0;
     let skipped = 0;
     for (const row of (rows ?? []) as OutboxRow[]) {
+      // claim the row atomically — overlapping runs must never double-send
+      const { data: claimed } = await svc
+        .from("notification_outbox")
+        .update({ status: "sending", claimed_at: new Date().toISOString() })
+        .eq("id", row.id)
+        .eq("status", "pending")
+        .select("id");
+      if (!claimed || claimed.length === 0) continue; // another run owns it
+
       try {
         const [{ data: devices }, { data: userRow }] = await Promise.all([
           svc.from("devices").select("expo_push_token").eq("user_id", row.user_id),
@@ -49,9 +68,18 @@ Deno.serve(
         ]);
         const tokens = (devices ?? []).map((d: { expo_push_token: string }) => d.expo_push_token);
         if (tokens.length === 0) {
+          // no device YET is retryable — the user may register one; only the
+          // attempts cap turns it into a terminal skip
+          const noTokenDone = row.attempts + 1 >= 3;
           await svc.from("notification_outbox")
-            .update({ status: "skipped", sent_at: new Date().toISOString() })
-            .eq("id", row.id);
+            .update({
+              status: noTokenDone ? "skipped" : "pending",
+              attempts: row.attempts + 1,
+              last_error: "no device token",
+              ...(noTokenDone ? { sent_at: new Date().toISOString() } : {}),
+            })
+            .eq("id", row.id)
+            .eq("status", "sending");
           skipped++;
           continue;
         }
@@ -81,7 +109,8 @@ Deno.serve(
         });
         await svc.from("notification_outbox")
           .update({ status: "sent", sent_at: new Date().toISOString(), attempts: row.attempts + 1 })
-          .eq("id", row.id);
+          .eq("id", row.id)
+          .eq("status", "sending");
         sent++;
       } catch (e) {
         const failedForGood = row.attempts + 1 >= 3;
@@ -91,7 +120,8 @@ Deno.serve(
             attempts: row.attempts + 1,
             last_error: String(e).slice(0, 500),
           })
-          .eq("id", row.id);
+          .eq("id", row.id)
+          .eq("status", "sending");
       }
     }
     return json({ sent, skipped });

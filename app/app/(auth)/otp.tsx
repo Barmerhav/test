@@ -55,8 +55,13 @@ export default function OtpScreen() {
       if (st && (st.residency || st.subscription || st.picker)) {
         // returning user — straight to wherever their state points
         router.replace(routeForState(st).href);
-      } else {
+      } else if (st) {
+        // state loaded and genuinely empty — a first-run account
         router.replace("/(auth)/mode");
+      } else {
+        // get_my_state failed with a live session: an existing subscriber must
+        // land on the root retry screen, never the first-run mode chooser
+        router.replace("/");
       }
     } catch (err) {
       setCode("");

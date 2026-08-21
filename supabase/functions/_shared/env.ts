@@ -27,6 +27,21 @@ export async function requireUser(req: Request): Promise<{ id: string }> {
   return { id: data.user.id };
 }
 
+/** True when the caller presents the service-role key (cron / internal). */
+export function isServiceRequest(req: Request): boolean {
+  const auth = req.headers.get("Authorization") ?? "";
+  return SERVICE_KEY !== "" && auth === `Bearer ${SERVICE_KEY}`;
+}
+
+/** Allow the scheduled service-role path, or a signed-in admin_users member. */
+export async function requireAdmin(req: Request): Promise<void> {
+  if (isServiceRequest(req)) return;
+  const user = await requireUser(req);
+  const { data } = await serviceClient()
+    .from("admin_users").select("user_id").eq("user_id", user.id).maybeSingle();
+  if (!data) throw new HttpError(403, "not_authorized");
+}
+
 /** Read config keys fresh per invocation (service read; config has no secrets). */
 export async function readConfig(keys: string[]): Promise<Record<string, unknown>> {
   const { data, error } = await serviceClient().from("config").select("key, value").in("key", keys);
