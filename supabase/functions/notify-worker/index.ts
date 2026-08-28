@@ -4,7 +4,7 @@
  * SEND TIME (push copy is admin-editable); params never contain entry codes
  * or apartment-level addresses.
  */
-import { createExpoPushProvider } from "@pinui/providers/push";
+import { createExpoPushProvider } from "../../../packages/providers/src/push.ts";
 import { formatILS } from "../../../packages/shared/src/money/index.ts";
 import { handle, json, serviceClient } from "../_shared/env.ts";
 

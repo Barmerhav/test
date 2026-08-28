@@ -4,7 +4,7 @@
  * read OTPs; a real Israeli gateway — 019/InforU — drops in without touching
  * auth flow). Also the choke point for anti-SMS-pumping counters.
  */
-import { createMockSmsProvider } from "@pinui/providers/sms";
+import { createMockSmsProvider } from "../../../packages/providers/src/sms.ts";
 import { handle, json, readString, serviceClient } from "../_shared/env.ts";
 
 const HOOK_SECRET = Deno.env.get("SEND_SMS_HOOK_SECRET") ?? "";

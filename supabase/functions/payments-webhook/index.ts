@@ -5,7 +5,7 @@
  * which does all side effects atomically: subscription activation, bag-roll
  * grant, past_due recovery, referral rewards.
  */
-import { createMockPaymentProvider, type PaymentEvent } from "@pinui/providers/payment";
+import { createMockPaymentProvider, type PaymentEvent } from "../../../packages/providers/src/payment.ts";
 import {
   HttpError,
   MOCK_WEBHOOK_SECRET,
