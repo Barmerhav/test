@@ -33,7 +33,7 @@ onto rows at transition time.
 
 - All state transitions/money/audit live in SECURITY DEFINER SQL RPCs
   (`api.*`); RLS has zero write policies for authenticated. New migrations are
-  append-only (`supabase/migrations/00170_...` next); replace the LATEST
+  append-only (`supabase/migrations/00180_...` next); replace the LATEST
   version of a function (later migrations supersede earlier ones).
 - Strings: he primary + en fallback, seeded in `supabase/seeds/02_strings.sql`,
   rendered via `str('key')` in app / `readString` in edge fns. Never hardcode copy.
