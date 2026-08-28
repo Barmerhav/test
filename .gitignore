@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.expo/
+*.tsbuildinfo
+.env
+.env.local
+.DS_Store
+supabase/.branches
+supabase/.temp
+supabase/tests/.tmp
+coverage/

@@ -1,0 +1,566 @@
+<title>למטה · Lemata</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap">
+<style>
+  :root{
+    --page:#E8EAE4; --page-ink:#212528; --page-muted:#6E7570; --page-line:#D5D9D2;
+    --panel:#F4F5F1; --term-bg:#212528; --term-ink:#D9DED9; --term-green:#8FD9B4;
+    --accent:#3E7E62; --accent-deep:#2F6B51;
+  }
+  :root:not([data-theme="light"]){ }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --page:#1B1E21; --page-ink:#EDEFEA; --page-muted:#9AA39C; --page-line:#33383C;
+      --panel:#24282B; --term-bg:#111315; --term-ink:#C9CFc9; --term-ink:#C9CFC9;
+    }
+  }
+  :root[data-theme="dark"]{
+    --page:#1B1E21; --page-ink:#EDEFEA; --page-muted:#9AA39C; --page-line:#33383C;
+    --panel:#24282B; --term-bg:#111315; --term-ink:#C9CFC9;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  body{
+    margin:0; background:var(--page); color:var(--page-ink);
+    font-family:Heebo,'Segoe UI',Arial,sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+    padding:28px 16px 64px;
+  }
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+
+  header{width:min(680px,100%); display:flex; align-items:baseline; gap:10px; margin-bottom:6px}
+  .wordmark{font-weight:900; font-size:30px; letter-spacing:-.5px}
+  .wordmark .dot{color:var(--accent)}
+  .latin{font:700 12px 'JetBrains Mono',monospace; color:var(--page-muted); letter-spacing:2px}
+  .tagline{width:min(680px,100%); color:var(--page-muted); font-size:14px; margin:0 0 22px; direction:rtl; text-align:right}
+  header{direction:rtl}
+
+  /* mode switch */
+  .switch{direction:rtl; display:flex; gap:4px; background:var(--panel); border:1px solid var(--page-line);
+    border-radius:14px; padding:4px; margin-bottom:18px}
+  .switch button{
+    border:0; background:transparent; color:var(--page-muted); font:700 14px Heebo,sans-serif;
+    padding:9px 22px; border-radius:10px; cursor:pointer; transition:all .15s;
+  }
+  .switch button.on{background:var(--accent); color:#F2F8F4; box-shadow:0 4px 14px rgba(62,126,98,.3)}
+  .switch button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  /* phone */
+  .stage{position:relative}
+  .phone{
+    width:min(392px,94vw); height:min(770px,168vw);
+    border-radius:44px; border:1px solid rgba(0,0,0,.25);
+    box-shadow:0 30px 70px rgba(20,30,25,.35), inset 0 0 0 8px #0E0F10;
+    overflow:hidden; position:relative; background:#0E0F10;
+  }
+  .screen{
+    position:absolute; inset:8px; border-radius:36px; overflow:hidden;
+    direction:rtl; display:none; flex-direction:column;
+  }
+  .screen.on{display:flex}
+  .notch{position:absolute; top:14px; left:50%; transform:translateX(-50%); width:110px; height:24px;
+    background:#0E0F10; border-radius:20px; z-index:50}
+
+  /* ------ RESIDENT (light) tokens are literal by design-canvas spec ------ */
+  .res{background:#FAFAF8; color:#212528}
+  .res .body{flex:1; overflow-y:auto; padding:52px 20px 88px; display:flex; flex-direction:column; gap:14px}
+  .chip{display:inline-flex; align-items:center; gap:6px; font:700 11.5px Heebo; border-radius:99px; padding:5px 12px}
+  .chip.mint{background:#E3EFE8; color:#2F6B51}
+  .chip.line{background:#F1F2F0; color:#575D5B}
+  .card{background:#FFFFFF; border:1px solid #E2E5E0; border-radius:18px; padding:16px}
+  .card.mint{background:#E3EFE8; border-color:#CFE2D6}
+  h1.rtitle{font:900 22px Heebo; margin:0}
+  .rsub{font:500 12.5px Heebo; color:#87908A; margin:0}
+  .ring{width:168px; height:168px; margin:6px auto; position:relative}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .num{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center}
+  .ring .num b{font:800 44px 'JetBrains Mono',monospace; color:#212528; direction:ltr}
+  .ring .num span{font:600 11.5px Heebo; color:#87908A}
+  .avatars{display:flex; align-items:center; gap:8px; justify-content:center}
+  .avatars .avs{display:flex}
+  .av{width:26px; height:26px; border-radius:50%; background:#7BC9A3; color:#0F241A; font:800 12px Heebo;
+     display:flex; align-items:center; justify-content:center; border:2px solid #FAFAF8; margin-inline-start:-7px}
+  .av:first-child{margin-inline-start:0}
+  .avatars p{font:600 12px Heebo; color:#575D5B; margin:0}
+  .bigbtn{
+    height:96px; border:0; border-radius:24px; background:#3E7E62; color:#F2F8F4;
+    font:800 24px Heebo; cursor:pointer; width:100%;
+    box-shadow:0 10px 26px rgba(62,126,98,.32); transition:transform .1s;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+  }
+  .bigbtn small{font:600 12px Heebo; opacity:.85}
+  .bigbtn:active{transform:scale(.97)}
+  .bigbtn[disabled]{background:#E7E9E4; color:#A2AAA4; box-shadow:none; cursor:default}
+  .cta{height:52px; border:0; border-radius:14px; background:#3E7E62; color:#F2F8F4; font:800 16px Heebo;
+    width:100%; cursor:pointer; box-shadow:0 8px 20px rgba(62,126,98,.25); transition:transform .1s}
+  .cta:active{transform:scale(.97)}
+  .ghost{background:none; border:0; color:#87908A; font:600 13px Heebo; cursor:pointer; padding:8px}
+  .ttl{display:flex; gap:8px}
+  .ttl button{flex:1; border:1px solid #E2E5E0; background:#FFFFFF; color:#575D5B; font:700 13px Heebo;
+    border-radius:12px; padding:12px 4px; cursor:pointer}
+  .ttl button.sel{background:#3E7E62; border-color:#3E7E62; color:#F2F8F4}
+  .stepper{display:flex; align-items:center; justify-content:center; gap:22px}
+  .stepper button{width:44px; height:44px; border-radius:12px; border:1px solid #E2E5E0; background:#fff;
+    font:800 20px 'JetBrains Mono'; color:#2F6B51; cursor:pointer}
+  .stepper b{font:800 34px 'JetBrains Mono'; direction:ltr}
+  .cd{font:800 46px 'JetBrains Mono',monospace; direction:ltr; text-align:center; color:#212528; letter-spacing:1px}
+  .bar{height:6px; border-radius:6px; background:#F1F2F0; overflow:hidden}
+  .bar i{display:block; height:100%; background:#3E7E62; border-radius:6px; transition:width 1s linear}
+  .courier{display:flex; align-items:center; gap:10px}
+  .courier .cav{width:42px; height:42px; border-radius:50%; background:#3E7E62; color:#F2F8F4;
+    font:800 18px Heebo; display:flex; align-items:center; justify-content:center}
+  .refcode{border:1.5px dashed #9CC5AF; background:#F4FAF6; border-radius:12px; padding:12px;
+    font:800 22px 'JetBrains Mono'; text-align:center; letter-spacing:3px; direction:ltr; color:#2F6B51}
+  .tabbar{position:absolute; bottom:0; inset-inline:0; height:72px; background:#FFFFFFF2; backdrop-filter:blur(8px);
+    border-top:1px solid #E2E5E0; display:flex; padding-bottom:10px}
+  .tabbar div{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    font:600 10.5px Heebo; color:#A2AAA4}
+  .tabbar div.on{color:#2F6B51; font-weight:800}
+  .tabbar svg{width:21px;height:21px}
+
+  /* ------ PICKER (dark) ------ */
+  .pk{background:#212528; color:#FAFAF8}
+  .pk .body{flex:1; overflow-y:auto; padding:52px 18px 88px; display:flex; flex-direction:column; gap:12px}
+  .pk .card{background:#2A2E33; border:1px solid #3A4046; border-radius:18px; padding:16px; color:#F1F2F0}
+  .pk h1{font:900 21px Heebo; margin:0}
+  .pk .sub{font:600 12px Heebo; color:#787F87; margin:0}
+  .money{font:800 22px 'JetBrains Mono'; color:#8FD9B4; direction:ltr}
+  .pk .pill{display:inline-flex; font:700 11px Heebo; border-radius:99px; padding:4px 11px}
+  .pill.open{background:#24463A; color:#8FD9B4}
+  .pill.wait{background:#3A4046; color:#A6ACB2}
+  .pill.mine{background:#7BC9A3; color:#0F241A}
+  .pcta{height:56px; border:0; border-radius:15px; background:#3E7E62; color:#F4FAF6; font:800 16.5px Heebo;
+    width:100%; cursor:pointer; box-shadow:0 10px 26px rgba(62,126,98,.38); transition:transform .1s}
+  .pcta:active{transform:scale(.97)}
+  .pcta.sec{background:#33383E; color:#F1F2F0; box-shadow:none}
+  .avail{display:flex; align-items:center; gap:7px; font:700 12px Heebo; color:#8FD9B4;
+    background:#24463A; border-radius:99px; padding:6px 13px}
+  .avail i{width:8px; height:8px; border-radius:50%; background:#8FD9B4; box-shadow:0 0 8px #8FD9B4}
+  .code{
+    background:#111315; border:1px solid #3A4046; border-radius:20px; padding:18px; text-align:center;
+  }
+  .code b{font:800 58px 'JetBrains Mono'; color:#8FD9B4; letter-spacing:6px; direction:ltr; display:block}
+  .code .exp{font:700 12px 'JetBrains Mono'; color:#787F87; direction:ltr}
+  .door{display:flex; align-items:center; gap:12px; background:#2A2E33; border:1px solid #3A4046;
+    border-radius:16px; padding:13px 15px; min-height:60px}
+  .door.done{opacity:.55}
+  .tick{width:30px; height:30px; border-radius:50%; border:2px solid #4A5158; flex:none;
+    display:flex; align-items:center; justify-content:center; color:#0F241A; font-weight:900; cursor:pointer}
+  .tick.on{background:#7BC9A3; border-color:#7BC9A3}
+  .x2{font:700 11px Heebo; background:#3A4046; color:#A6ACB2; border:0; border-radius:99px; padding:5px 11px; cursor:pointer}
+  .x2.on{background:#7BC9A3; color:#0F241A}
+  .pk .footer{position:absolute; bottom:72px; inset-inline:0; padding:12px 18px; background:#212528F0;
+    border-top:1px solid #33383E; display:flex; align-items:center; justify-content:space-between}
+  .pk .tabbar{background:#212528F2; border-top:1px solid #33383E}
+  .pk .tabbar div{color:#787F87}
+  .pk .tabbar div.on{color:#8FD9B4}
+  .qr{width:150px; height:150px; margin:8px auto; background:
+    repeating-linear-gradient(0deg,#F1F2F0 0 8px,transparent 8px 16px),
+    repeating-linear-gradient(90deg,#F1F2F0 0 8px,#111315 8px 16px);
+    border-radius:12px; border:8px solid #F1F2F0}
+  .goal .bar{background:#33383E}
+  .goal .bar i{background:#8FD9B4}
+  .burst{font-size:44px; text-align:center}
+
+  /* step hint + reset */
+  .hint{direction:rtl; margin-top:16px; color:var(--page-muted); font-size:13px; display:flex; gap:12px; align-items:center}
+  .hint button{border:1px solid var(--page-line); background:var(--panel); color:var(--page-ink);
+    border-radius:9px; padding:6px 14px; font:600 12.5px Heebo; cursor:pointer}
+
+  /* transcript + facts */
+  section{width:min(680px,100%); margin-top:46px; direction:rtl}
+  section h2{font:800 19px Heebo; margin:0 0 4px}
+  section .sh{color:var(--page-muted); font-size:13px; margin:0 0 14px}
+  .term{
+    background:var(--term-bg); color:var(--term-ink); border-radius:16px; padding:20px 22px;
+    font:500 12.3px/1.75 'JetBrains Mono',monospace; overflow-x:auto; direction:rtl; white-space:pre-wrap;
+  }
+  .term .g{color:var(--term-green)} .term .d{opacity:.55}
+  .facts{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-top:14px}
+  .fact{background:var(--panel); border:1px solid var(--page-line); border-radius:14px; padding:14px 16px}
+  .fact b{font:800 24px 'JetBrains Mono'; display:block; color:var(--accent); direction:ltr}
+  .fact span{font-size:12px; color:var(--page-muted)}
+  @media (prefers-reduced-motion: reduce){ *{transition:none!important; animation:none!important} }
+</style>
+
+<header><span class="wordmark">למטה<span class="dot">.</span></span><span class="latin">LEMATA</span></header>
+<p class="tagline">שקית ליד הדלת ← מישהו שממילא יורד לוקח אותה לפח. דמו אינטראקטיבי — לחצו על הכפתורים בתוך הטלפון.</p>
+
+<div class="switch" role="tablist">
+  <button id="mres" class="on" onclick="setMode('res')">מצב דיירים</button>
+  <button id="mpk" onclick="setMode('pk')">מצב שליחים</button>
+</div>
+
+<div class="stage">
+<div class="phone">
+  <div class="notch"></div>
+
+  <!-- ============ RESIDENT ============ -->
+  <div class="screen res on" id="r-home">
+    <div class="body">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font:900 20px Heebo">שלום, דנה</span><span class="chip mint">מנוי פעיל · M</span>
+      </div>
+      <div class="ring">
+        <svg width="168" height="168" viewBox="0 0 168 168">
+          <circle cx="84" cy="84" r="74" fill="none" stroke="#F1F2F0" stroke-width="13"/>
+          <circle id="ringArc" cx="84" cy="84" r="74" fill="none" stroke="#3E7E62" stroke-width="13"
+            stroke-linecap="round" stroke-dasharray="465" stroke-dashoffset="0"/>
+        </svg>
+        <div class="num"><b id="ringNum">6</b><span>שקיות נשארו החודש</span></div>
+      </div>
+      <div class="avatars">
+        <div class="avs"><span class="av">ד</span><span class="av" style="background:#8FD9B4">ר</span><span class="av" style="background:#5FA482">א</span></div>
+        <p>3 שכנים בבניין שלך · רחוב הדוגמה 12</p>
+      </div>
+      <div style="flex:1"></div>
+      <button class="bigbtn" onclick="go('r-submit')">השקית מוכנה<small>בחוץ ליד הדלת? זה הכול</small></button>
+    </div>
+    <div class="tabbar">
+      <div class="on">⌂<span>בית</span></div><div>◔<span>שימוש</span></div><div>▤<span>שקיות</span></div><div>♡<span>הזמינו</span></div>
+    </div>
+  </div>
+
+  <div class="screen res" id="r-submit">
+    <div class="body">
+      <button class="ghost" style="align-self:flex-start" onclick="go('r-home')">→ חזרה</button>
+      <h1 class="rtitle">השקית בחוץ ליד הדלת?</h1>
+      <p class="rsub">מעולה. מכאן זה עלינו — הבקשה מתפרסמת לשכונה.</p>
+      <div class="card">
+        <p class="rsub" style="margin-bottom:10px">עד מתי לאסוף?</p>
+        <div class="ttl">
+          <button onclick="selTtl(this,'12:00')">עד הצהריים</button>
+          <button onclick="selTtl(this,'18:00')">עד 18:00</button>
+          <button class="sel" onclick="selTtl(this,'21:00')">היום ✓</button>
+        </div>
+      </div>
+      <div class="card">
+        <p class="rsub" style="margin-bottom:10px">כמה שקיות?</p>
+        <div class="stepper">
+          <button onclick="units(1)">+</button><b id="unitN">1</b><button onclick="units(-1)">−</button>
+        </div>
+        <p class="rsub" style="text-align:center;margin-top:8px">שקית גדולה אחת או עד 3 קטנות = שקית אחת מהמכסה</p>
+      </div>
+      <div style="flex:1"></div>
+      <button class="cta" onclick="submitReq()">לפרסם בקשה</button>
+      <p class="rsub" style="text-align:center">אפשר לבטל חינם עד שהשקית נתפסת</p>
+    </div>
+  </div>
+
+  <div class="screen res" id="r-open">
+    <div class="body">
+      <span class="chip" style="background:#FFF1CC;color:#7A5300;align-self:flex-start">● בחוץ</span>
+      <h1 class="rtitle">סגרנו — נאסוף היום</h1>
+      <p class="rsub">השקית בחוץ · תיאסף עד <b class="mono" dir="ltr" id="ttlShow">21:00</b></p>
+      <div class="card" style="text-align:center">
+        <div class="cd" id="cdOpen">—:—</div>
+        <p class="rsub">שעות עד הדדליין</p>
+        <div class="bar" style="margin-top:10px"><i id="barOpen" style="width:96%"></i></div>
+      </div>
+      <div class="card mint">
+        <p style="font:700 13.5px Heebo;color:#2F6B51;margin:0">לא נאספה עד אז? שקית זיכוי, אוטומטית.</p>
+        <p class="rsub" style="margin-top:4px">נעדכן ברגע שמישהו תופס · אין מה לעשות בינתיים</p>
+      </div>
+      <div style="flex:1"></div>
+      <p class="rsub" style="text-align:center">⌛ ממתין לשליח… (בדמו: עברו למצב שליחים ותפסו, או)</p>
+      <button class="cta" onclick="go('r-claimed')">דלגו — שליח תפס ←</button>
+      <button class="ghost" onclick="go('r-home')">ביטול הבקשה</button>
+    </div>
+  </div>
+
+  <div class="screen res" id="r-claimed">
+    <div class="body">
+      <span class="chip mint" style="align-self:flex-start">● נתפסה</span>
+      <h1 class="rtitle">השקית בדרך למטה 🎉</h1>
+      <div class="card">
+        <div class="courier">
+          <div class="cav">ר</div>
+          <div><b style="font:800 15px Heebo">רון</b><p class="rsub">שליח מאומת ✓</p></div>
+          <span class="chip line" style="margin-inline-start:auto" dir="ltr">180 מ׳</span>
+        </div>
+      </div>
+      <div class="card mint">
+        <p style="font:700 13.5px Heebo;color:#2F6B51;margin:0">אין צורך בכלום — רק שהשקית תחכה בחוץ</p>
+      </div>
+      <div style="flex:1"></div>
+      <button class="cta" onclick="paidResident()">דלגו — נאספה ונסרקה ←</button>
+    </div>
+  </div>
+
+  <div class="screen res" id="r-paid">
+    <div class="body">
+      <div class="burst">🎉</div>
+      <span class="chip mint" style="align-self:center">✓ נאספה + נסרק QR בפח</span>
+      <h1 class="rtitle" style="text-align:center">נאספה ונסרקה בפח הבניין ✓</h1>
+      <p class="rsub" style="text-align:center">רון זרק אותה לפח של הבניין · נשארו לכם <b class="mono" id="leftAfter" dir="ltr">5</b> שקיות</p>
+      <div class="card mint" style="text-align:center">
+        <p style="font:800 15px Heebo;color:#2F6B51;margin:0 0 4px">שכנים שיאהבו את זה?</p>
+        <p class="rsub" style="margin:0 0 10px">כל שכן שמצטרף — שקית מתנה לשניכם</p>
+        <div class="refcode">PN-X7K3F9</div>
+        <button class="cta" style="margin-top:10px" onclick="toastR()">שלחו קוד</button>
+      </div>
+      <div style="flex:1"></div>
+      <p class="rsub" style="text-align:center">הבקשה נסגרה · אפשר לשגר עוד אחת מתי שרוצים</p>
+      <button class="ghost" onclick="go('r-home')">→ חזרה הביתה</button>
+    </div>
+  </div>
+
+  <!-- ============ PICKER ============ -->
+  <div class="screen pk" id="p-feed">
+    <div class="body">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><h1>בקשות לידך</h1><p class="sub"><span id="feedCount">2</span> פתוחות · רדיוס <span class="mono" dir="ltr">400</span> מ׳</p></div>
+        <span class="avail"><i></i>זמין</span>
+      </div>
+      <div class="card" id="feedCard1">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <b style="font:800 16px Heebo">רח׳ הדוגמה 12</b>
+            <p class="sub" style="margin-top:3px">בניין אחד · 2 דיירים · <span class="mono" dir="ltr">180 מ׳</span> · עד <span class="mono" dir="ltr">21:00</span></p>
+            <p class="sub" style="margin-top:3px">🔒 הקוד נחשף אחרי תפיסה</p>
+          </div>
+          <span class="money">₪14</span>
+        </div>
+        <button class="pcta" style="margin-top:12px;height:48px" onclick="claim()">לתפוס הכול</button>
+      </div>
+      <div class="card" style="opacity:.6">
+        <div style="display:flex;justify-content:space-between">
+          <div><b style="font:800 15px Heebo">בן יהודה 8</b>
+          <p class="sub" style="margin-top:3px"><span class="mono" dir="ltr">320 מ׳</span> · נודיע ברגע שיאשר</p></div>
+          <span class="pill wait">ממתין לאישור דייר</span>
+        </div>
+      </div>
+    </div>
+    <div class="tabbar">
+      <div class="on">☰<span>בקשות</span></div><div>₪<span>רווחים</span></div><div>◉<span>פרופיל</span></div>
+    </div>
+  </div>
+
+  <div class="screen pk" id="p-stop">
+    <div class="body">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><h1>תפיסה — הדוגמה 12</h1><p class="sub">לאסוף ולסרוק עד <span class="mono" dir="ltr" id="stopDl">--:--</span></p></div>
+        <span class="pill mine">● שלי</span>
+      </div>
+      <div class="code">
+        <p class="sub" style="margin:0 0 6px">קוד כניסה · חשיפה מתועדת</p>
+        <b>2468#</b>
+        <p class="exp">הקוד פעיל ל־<span id="codeCd">10:00</span></p>
+      </div>
+      <div class="door" id="door1">
+        <span class="tick" onclick="tick(this,1)"></span>
+        <div style="flex:1"><b style="font:700 14px Heebo">קומה 3 · דירה 12</b><p class="sub">שקית אחת · דנה</p></div>
+        <button class="x2" onclick="x2(this)">×2 גדולה</button>
+      </div>
+      <div class="door" id="door2">
+        <span class="tick" onclick="tick(this,2)"></span>
+        <div style="flex:1"><b style="font:700 14px Heebo">קומה 1 · דירה 2</b><p class="sub">שקית אחת · יוסי</p></div>
+        <button class="x2" onclick="x2(this)">×2 גדולה</button>
+      </div>
+      <div class="card" style="border-style:dashed">
+        <p style="font:700 13px Heebo;margin:0">💧 דולפת? צלמו ודלגו</p>
+        <p class="sub" style="margin-top:3px">בלי קנס · הדייר מקבל עדכון אוטומטי</p>
+      </div>
+    </div>
+    <div class="footer">
+      <span class="sub">בסיום העצירה</span><span class="money" id="stopPay">+₪14</span>
+    </div>
+    <div class="tabbar" style="bottom:0"><div style="flex:none;width:100%;padding:0 18px">
+      <button class="pcta" id="scanBtn" disabled style="opacity:.45" onclick="go('p-scan')">לסריקת ה-QR בפח</button>
+    </div></div>
+  </div>
+
+  <div class="screen pk" id="p-scan">
+    <div class="body" style="justify-content:center;text-align:center">
+      <h1 style="text-align:center">סרקו את ה-QR שעל הפח</h1>
+      <p class="sub" style="text-align:center">הסריקה סוגרת את העצירה ומשחררת את התשלום</p>
+      <div class="qr"></div>
+      <p class="sub mono" style="text-align:center" dir="ltr">BIN-DEMO-0001</p>
+      <button class="pcta" onclick="celebrate()">✓ סריקה</button>
+    </div>
+  </div>
+
+  <div class="screen pk" id="p-pay">
+    <div class="body" style="justify-content:center;text-align:center">
+      <div class="burst">✨</div>
+      <span class="pill mine" style="align-self:center">✓ נסרק — פח בניין · הדוגמה 12</span>
+      <div class="money" style="font-size:64px;margin:8px 0" id="payBig">+₪14</div>
+      <p class="sub" style="text-align:center">סה״כ היום <span class="money" style="font-size:16px" id="payTotal">₪14</span></p>
+      <div class="goal" style="margin:14px 24px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span class="sub">היעד היומי</span><span class="sub mono" dir="ltr" id="goalTxt">14/84</span>
+        </div>
+        <div class="bar"><i id="goalBar" style="width:17%"></i></div>
+      </div>
+      <button class="pcta" onclick="resetPk()">לבקשה הבאה · 320 מ׳ לידך</button>
+      <button class="pcta sec" style="margin-top:10px" onclick="go('p-earn')">רווחים ←</button>
+    </div>
+  </div>
+
+  <div class="screen pk" id="p-earn">
+    <div class="body">
+      <h1>רווחים</h1>
+      <div style="display:flex;gap:8px">
+        <span class="pill mine">היום</span><span class="pill wait">שבוע</span><span class="pill wait">חודש</span>
+      </div>
+      <div class="card" style="text-align:center">
+        <div class="money" style="font-size:46px" id="earnBig">₪14</div>
+        <p class="sub">2 עצירות · 2 שקיות · ממוצע ₪7 לעצירה</p>
+      </div>
+      <div class="card">
+        <b style="font:700 13.5px Heebo">העברה הבאה — יום א׳</b>
+        <p class="sub" style="margin-top:3px">לאומי ••1234 · אוטומטית, כל שבוע</p>
+      </div>
+      <div class="card">
+        <b style="font:700 13.5px Heebo">ארכיון חשבוניות</b>
+        <p class="sub mono" style="margin-top:5px" dir="ltr">SB-2026-000001 · הופקה בשבילך ✓</p>
+      </div>
+      <button class="ghost" style="color:#787F87" onclick="go('p-feed')">→ חזרה לפיד</button>
+    </div>
+    <div class="tabbar">
+      <div>☰<span>בקשות</span></div><div class="on">₪<span>רווחים</span></div><div>◉<span>פרופיל</span></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="hint">
+  <button onclick="resetAll()">איפוס הדמו</button>
+  <span id="hintTxt">התחילו: לחצו "השקית מוכנה"</span>
+</div>
+
+<section>
+  <h2>זה לא מוקאפ בלבד — המנוע רץ באמת</h2>
+  <p class="sh">הפלט הזה הופק הרגע מהבקאנד האמיתי (Postgres + RLS + כל ה-RPCs), על בניין הדמו:</p>
+  <div class="term">למטה (Lemata) — הלולאה הדו-צדדית, על המנוע האמיתי
+<span class="d">────────────────────────────────────────</span>
+◆ דנה (דיירת): מצב חשבון
+  <span class="g">✓</span> מנוי M פעיל · מכסה 6/6 · רחוב הדוגמה 12 (3 דלתות)
+◆ דנה לוחצת "השקית מוכנה" — שקית אחת, עד היום
+  <span class="g">✓</span> בקשה פתוחה · מימון: [{"type":"allowance","units":1}]
+◆ רון (שליח): הפיד
+  <span class="g">✓</span> "רח׳ רחוב הדוגמה · 1 שקיות · ₪7.00 · עד 20:00"
+◆ רון תופס (soft-lock, race-safe) → חשיפת קוד מתועדת
+  <span class="g">✓</span> קוד: 2468# · פג אחרי 10 דק׳ · שורות ביקורת: 1
+◆ איסוף "3 קטנות = 1" (השרת סופר מחדש) → סריקת QR
+  <span class="g">✓</span> +₪7.00 · audit מלא: open → claimed → collected → verified → paid
+◆ בקשה שפגה — זיכוי אוטומטי
+  <span class="g">✓</span> זיכוי 1 (expiry_comp) + פוש — בלי מגע יד אדם
+◆ ריצת שכר + חשבונית עצמית
+  <span class="g">✓</span> ₪7.00 (פטור, בלי מע״מ) · SB-2026-000001</div>
+  <div class="facts">
+    <div class="fact"><b>133</b><span>בדיקות ירוקות (DB + unit)</span></div>
+    <div class="fact"><b>30</b><span>ערכי קונפיג — הכול נערך מהאדמין</span></div>
+    <div class="fact"><b>46</b><span>מסכי אפליקציה + אדמין</span></div>
+    <div class="fact"><b>0</b><span>ערכים עסקיים בקוד</span></div>
+  </div>
+</section>
+
+<script>
+  let mode='res', res='r-home', pk='p-feed', unitsN=1, ttl='21:00';
+  let remaining=6, ticked=0, pay=14, total=0;
+  const $=id=>document.getElementById(id);
+  function showScreens(){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+    $(mode==='res'?res:pk).classList.add('on');
+  }
+  function setMode(m){
+    mode=m;
+    $('mres').classList.toggle('on',m==='res');
+    $('mpk').classList.toggle('on',m==='pk');
+    hint(m==='res'?'מצב דיירים — לחצו "השקית מוכנה"':'מצב שליחים — תפסו את הבניין מהפיד');
+    showScreens();
+  }
+  function go(id){
+    if(id.startsWith('r-')) res=id; else pk=id;
+    mode=id.startsWith('r-')?'res':'pk';
+    $('mres').classList.toggle('on',mode==='res');
+    $('mpk').classList.toggle('on',mode==='pk');
+    showScreens();
+  }
+  function hint(t){$('hintTxt').textContent=t}
+  function selTtl(btn,t){
+    ttl=t;
+    btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('sel'));
+    btn.classList.add('sel');
+  }
+  function units(d){unitsN=Math.min(6,Math.max(1,unitsN+d));$('unitN').textContent=unitsN}
+  function submitReq(){
+    remaining=Math.max(0,6-unitsN);
+    setRing(remaining);
+    $('ttlShow').textContent=ttl;
+    hint('הבקשה פורסמה. עברו למצב שליחים ותפסו אותה 👈');
+    go('r-open'); startOpenCd();
+  }
+  function setRing(n){
+    $('ringNum').textContent=n;
+    $('ringArc').style.strokeDashoffset=String(465-465*(n/6));
+    $('leftAfter').textContent=n;
+  }
+  let openTimer;
+  function startOpenCd(){
+    clearInterval(openTimer);
+    const end=new Date(); const [h,m]=ttl.split(':');
+    end.setHours(+h,+m,0,0); if(end<new Date()) end.setDate(end.getDate()+1);
+    const tick=()=>{
+      const s=Math.max(0,(end-new Date())/1000);
+      $('cdOpen').textContent=String(Math.floor(s/3600)).padStart(2,'0')+':'+String(Math.floor(s%3600/60)).padStart(2,'0');
+    };
+    tick(); openTimer=setInterval(tick,1000);
+  }
+  function paidResident(){ go('r-paid'); hint('הלולאה נסגרה 🎉 — נסו גם את זרימת השליח המלאה'); }
+  function toastR(){ hint('קוד ההזמנה שותף — שקית מתנה לשני הצדדים כשהשכן משלם'); }
+
+  /* picker */
+  let codeTimer, codeLeft=600;
+  function claim(){
+    pk='p-stop'; go('p-stop');
+    const dl=new Date(Date.now()+45*60000);
+    $('stopDl').textContent=String(dl.getHours()).padStart(2,'0')+':'+String(dl.getMinutes()).padStart(2,'0');
+    codeLeft=600; clearInterval(codeTimer);
+    codeTimer=setInterval(()=>{
+      codeLeft=Math.max(0,codeLeft-1);
+      $('codeCd').textContent=Math.floor(codeLeft/60)+':'+String(codeLeft%60).padStart(2,'0');
+    },1000);
+    hint('הקוד נחשף (מתועד). סמנו את שתי הדלתות ✓');
+    // resident side reflects the claim
+    if(res==='r-open') res='r-claimed';
+  }
+  function tick(el,n){
+    if(el.classList.contains('on')) return;
+    el.classList.add('on'); el.textContent='✓';
+    el.closest('.door').classList.add('done');
+    ticked++;
+    if(ticked>=2){ const b=$('scanBtn'); b.disabled=false; b.style.opacity='1'; hint('הכול נאסף — לסריקה בפח'); }
+  }
+  function x2(el){
+    el.classList.toggle('on');
+    pay += el.classList.contains('on') ? 7 : -7;
+    $('stopPay').textContent='+₪'+pay;
+  }
+  function celebrate(){
+    total+=pay;
+    $('payBig').textContent='+₪'+pay;
+    $('payTotal').textContent='₪'+total;
+    $('earnBig').textContent='₪'+total;
+    $('goalTxt').textContent=total+'/84';
+    $('goalBar').style.width=Math.min(100,total/84*100)+'%';
+    go('p-pay');
+    if(res!=='r-home') res='r-paid';
+    hint('שולם! צד הדייר קיבל "נאספה ונסרקה" — החליפו מצב לראות');
+  }
+  function resetPk(){
+    ticked=0; pay=14;
+    document.querySelectorAll('.tick').forEach(t=>{t.classList.remove('on');t.textContent=''});
+    document.querySelectorAll('.door').forEach(d=>d.classList.remove('done'));
+    document.querySelectorAll('.x2').forEach(x=>x.classList.remove('on'));
+    $('stopPay').textContent='+₪14';
+    const b=$('scanBtn'); b.disabled=true; b.style.opacity='.45';
+    go('p-feed');
+  }
+  function resetAll(){
+    remaining=6; setRing(6); unitsN=1; $('unitN').textContent='1';
+    total=0; res='r-home'; pk='p-feed'; resetPk(); setMode('res');
+    hint('התחילו: לחצו "השקית מוכנה"');
+  }
+</script>
