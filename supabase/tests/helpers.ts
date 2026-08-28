@@ -19,8 +19,10 @@ let phoneCounter = 0;
 export async function createTestUser(prefix = "97250"): Promise<{ id: string; phone: string }> {
   phoneCounter += 1;
   const phone = `${prefix}${String(Date.now() % 1_000_000_000)}${phoneCounter}`;
+  // Real GoTrue's auth.users.id has no default (ids are generated app-side),
+  // so supply one explicitly; works identically on the CI shim.
   const { rows } = await pool.query(
-    "insert into auth.users (phone) values ($1) returning id, phone",
+    "insert into auth.users (id, phone) values (gen_random_uuid(), $1) returning id, phone",
     [phone],
   );
   return rows[0] as { id: string; phone: string };
